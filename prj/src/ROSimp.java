@@ -1,15 +1,16 @@
 import java.rmi.RemoteException;
 import java.rmi.server.RemoteServer;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 
 import exceptions.ExistingUser;
 
 public class ROSimp extends RemoteServer implements ROSint {
-    private HashSet<ROCint> loggedUsers;
+    private HashMap<String,ROCint> loggedUsers;
     public ROSimp () {
         super();
-        loggedUsers = new HashSet<>();
+        loggedUsers = new HashMap<>();
     }
 
     public int register(String username, String password, String tags) throws RemoteException, ExistingUser {
@@ -27,32 +28,27 @@ public class ROSimp extends RemoteServer implements ROSint {
     }
 
     public synchronized void registerForCallback(ROCint ClientInterface) throws RemoteException {
-        if (!loggedUsers.contains(ClientInterface)) {
-            loggedUsers.add(ClientInterface);
+        if (!loggedUsers.containsValue(ClientInterface)) {
+            loggedUsers.put(ClientInterface.name(), ClientInterface);
             System.out.println("New client registered.");
         }
     }
 
     /* annulla registrazione per il callback */
     public synchronized void unregisterForCallback(ROCint Client) throws RemoteException {
-        if (this.loggedUsers.remove(Client))
+        if (this.loggedUsers.remove(Client.name()) != null)
             System.out.println("Client unregistered");
         else
             System.out.println("Unable to unregister client");
     }
 
     /*
-     * notifica di una variazione di valore dell'azione
-     * /* quando viene richiamato, fa il callback a tutti i client
-     * registrati
+     * notifica di una modifica (follower in più o in meno) ai follower di 'followed'
      */
     public synchronized void update(String followed) throws RemoteException {
         System.out.println("Starting callbacks.");
-        String[] mock = {"test", "test2"};
-        Iterator<ROCint> i = this.loggedUsers.iterator();
-        while (i.hasNext()) {
-            ROCint client = (ROCint) i.next();
-            client.newFollowers(mock);
+        if (this.loggedUsers.containsKey(followed)) {
+            this.loggedUsers.get(followed).newFollowers(ServerMain.getFollowers(followed));
         }
         System.out.println("Callbacks complete.");
     }

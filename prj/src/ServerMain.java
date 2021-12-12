@@ -28,17 +28,23 @@ public class ServerMain {
         try {
 
 
+            // RMI setup
             ROSimp server = new ROSimp();
             ROSint stub = (ROSint) UnicastRemoteObject.exportObject(server, 39000);
-
             LocateRegistry.createRegistry(1900);
             LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
+            // Now ready to handle RMI registration and followers's update notifications
+
+            
 
 
-            while(true) {
-                Thread.sleep(800);
-                server.update("");
-            }
+
+
+
+            // while(true) {
+            //     Thread.sleep(800);
+            //     server.update("");
+            // }
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -48,30 +54,9 @@ public class ServerMain {
     public static void addUser (String username, String password, String tags) throws ExistingUser{
         users.put(username, new User(username, password, tags));
     }
-
-    /**
-     * 
-     * @param username
-     * @param password
-     * @param tags     max 5 tags
-     * @return 0 success, 1 already existing user, 2 too many tags
-     * @throws ExistingUser
-     * @throws NullPointerException
-     */
-    public int register(String username, String password, String tags) throws RemoteException, ExistingUser {
-        if (username == null || password == null || tags == null)
-            throw new NullPointerException();
-        if (activeUsernames.contains(username))
-            return 1;
-        if (tags.split("\\s+").length > 5)
-            return 2;
-        users.put(username, new User(username, password, tags));
-        
-        // debug
-        System.out.println("New User registered: " + username + " " + password + " " + tags);
-        
-        return 0;
-    };
+    public static HashSet<String> getFollowers (String username) {
+        return new HashSet<String>(users.get(username).followers);
+    }
 
     /**
      * 
@@ -164,8 +149,8 @@ public class ServerMain {
         // in a single json file, without worrying to who belongs what
 
         // same thing for users
-        ArrayList<String> followers;
-        ArrayList<String> following;
+        HashSet<String> followers;
+        HashSet<String> following;
 
         int wallet = 0;
 
@@ -199,8 +184,8 @@ public class ServerMain {
         final int idPost;
         final String owner;
         final String content;
-        ArrayList<String> upvote;
-        ArrayList<String> downvote;
+        HashSet<String> upvote;
+        HashSet<String> downvote;
         HashMap<String, String> comments;
 
         // default constructor

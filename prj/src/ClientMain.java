@@ -22,7 +22,7 @@ public class ClientMain {
 
             System.out.println(server.register("username", "test", "tag1 tag2"));
 
-            ROCint stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(), 0);
+            ROCint stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp("username"), 0);
             server.registerForCallback(stub);
 
             Thread.sleep(5000); // do this on logout
