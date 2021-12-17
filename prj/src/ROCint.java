@@ -14,5 +14,5 @@ public interface ROCint extends Remote {
      * to a particular user regarding its followers
      * @return the logged user's username
      */
-    public String name ();
+    public String name() throws RemoteException;
 }

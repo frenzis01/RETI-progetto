@@ -1,3 +1,6 @@
+import java.nio.channels.*;
+import java.net.InetSocketAddress;
+import java.nio.*;
 import java.rmi.*;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -7,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 
 import exceptions.ExistingUser;
 
@@ -22,39 +26,54 @@ public class ServerMain {
     // we need it to notify the logged users
     private static HashMap<String, HashSet<String>> followers = new HashMap<>();
 
-    public ServerMain() {super();}
+    public ServerMain() {
+        super();
+    }
 
     public static void main(String args[]) {
         try {
 
-
             // RMI setup
-            ROSimp server = new ROSimp();
-            ROSint stub = (ROSint) UnicastRemoteObject.exportObject(server, 39000);
+            ROSimp serverRMI = new ROSimp();
+            ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
             LocateRegistry.createRegistry(1900);
             LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
             // Now ready to handle RMI registration and followers's update notifications
 
-            
+            // fakefollower
+            // Thread.sleep(3000);
+            // System.out.println("3sec elapsed " + users.containsKey("username"));
+            // users.get("username").followers.add(new String("fakeusr"));
+            // serverRMI.update("username");
 
-
-
+            // TCP server setup
+            Server server = new Server (12345);
+            server.start();
 
 
             // while(true) {
-            //     Thread.sleep(800);
-            //     server.update("");
+            // Thread.sleep(800);
+            // server.update("");
             // }
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    public static Boolean usernameUnavailable (String username) { return activeUsernames.contains(username); };
-    public static void addUser (String username, String password, String tags) throws ExistingUser{
-        users.put(username, new User(username, password, tags));
+    private void createStubUser () throws ExistingUser {
+        addUser("fakeusr", "stub", "tag1");
     }
-    public static HashSet<String> getFollowers (String username) {
+
+    public static Boolean usernameUnavailable(String username) {
+        return activeUsernames.contains(username);
+    };
+
+    public static void addUser(String username, String password, String tags) throws ExistingUser {
+        users.put(username, new User(username, password, tags));
+        activeUsernames.add(username);
+    }
+
+    public static HashSet<String> getFollowers(String username) {
         return new HashSet<String>(users.get(username).followers);
     }
 
@@ -92,6 +111,7 @@ public class ServerMain {
     };
 
     public int followUser(String username) {
+
         return 0;
     };
 
@@ -171,6 +191,9 @@ public class ServerMain {
                 tagsUsers.get(tag).add(this);
                 // TODO is it okay to add to a set a not-yet-existing user? mmmmmmmh
             }
+
+            this.followers = new HashSet<String>();
+            this.following = new HashSet<String>();
 
             ServerMain.followers.put(this.username, new HashSet<String>());
         }
