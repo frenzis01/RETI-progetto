@@ -8,16 +8,8 @@ public class ClientMain {
 
     public static void main (String args[]) {
         try {
+
             // RMI
-
-
-            // RMI Callback
-            // Registry registry = LocateRegistry.getRegistry(12345);  
-            // ServerInterface server = (ServerInterface) registry.lookup("Server");
-            
-            // NotifyFollowersInt callbackObj =  new NotifyFollowers();
-            // NotifyFollowers stub = (NotifyFollowers) UnicastRemoteObject.exportObject(callbackObj, 0);
-
             ROSint server = (ROSint) LocateRegistry.getRegistry(1900).lookup("rmi://127.0.0.1:1900");
 
             System.out.println(server.register("username", "test", "tag1 tag2"));
@@ -26,12 +18,12 @@ public class ClientMain {
             ROCint stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(new String("username")), 0);
             server.registerForCallback(stub);
 
-            Thread.sleep(5000); // do this on logout
-            server.unregisterForCallback(stub);
-
+            // TCP communication
             Client client = new Client(12345);
             client.start();
-
+            
+            // Thread.sleep(5000); // do this on logout
+            server.unregisterForCallback(stub);
             return;
         
         } catch (Exception e) {

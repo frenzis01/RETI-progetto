@@ -10,25 +10,9 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 class Server {
-    /**
-     * dimensione del buffer utilizzato per la lettura
-     */
-    private final int BUFFER_DIM = 2048;
-    /**
-     * comando utilizzato dal client per comunicare la fine della comunicazione
-     */
     private final String EXIT_CMD = "logout";
-    /**
-     * porta su cui aprire il listening socket
-     */
     private final int port;
-    /**
-     * messaggio di risposta
-     */
     private final String ADD_ANSWER = "echoed by server";
-    /**
-     * numero di client con i quali è aperta una connessione
-     */
     public int activeConnections;
 
     /**
@@ -75,7 +59,8 @@ class Server {
                                     "Server: new connection from: " + c_channel.getRemoteAddress() +
                                             " | active clients: " + ++this.activeConnections);
 
-                            this.registerRead(sel, c_channel); // Server is going to read from this channel
+                            // Server is going to read from this channel
+                            c_channel.register(sel, SelectionKey.OP_READ);
 
                         } else if (key.isReadable()) { // READABLE
                             this.getClientRequest(sel, key); // parse request
@@ -97,22 +82,6 @@ class Server {
     }
 
     /**
-     * Register OP_READ on the Selector
-     *
-     * @param sel       selector used in Server.start
-     * @param c_channel Client's channel
-     * @throws IOException
-     */
-    private void registerRead(Selector sel, SocketChannel c_channel) throws IOException {
-
-        ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
-        ByteBuffer message = ByteBuffer.allocate(BUFFER_DIM);
-        ByteBuffer[] bfs = { length, message };
-        // add [length, message] as attachment
-        c_channel.register(sel, SelectionKey.OP_READ, bfs);
-    }
-
-    /**
      * Read request from client and register OP_WRITE on the Selector
      *
      * @param sel selettore utilizzato dal server
@@ -122,36 +91,26 @@ class Server {
     private void getClientRequest(Selector sel, SelectionKey key) throws IOException {
         // Create new SocketChannel with the Client
         SocketChannel c_channel = (SocketChannel) key.channel();
-        ByteBuffer[] bfs = (ByteBuffer[]) key.attachment();
-        c_channel.read(bfs); // actual read
 
-        if (!bfs[0].hasRemaining()) {
-            bfs[0].flip();
-            int l = bfs[0].getInt();
+        String msg = Util.readMsgFromSocket(c_channel);
+        System.out.printf("Server: ricevuto %s | %d\n", msg, parseRequest(msg));
+        if (msg.equals(this.EXIT_CMD)) { // client logged out
+            // TODO handle logout
+            System.out.println("Server: logout from client " + c_channel.getRemoteAddress());
+            key.cancel();
+            c_channel.close();
+        } else {
+            String result = msg + " " + this.ADD_ANSWER; // TODO get actual request result
+            ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
+            length.putInt(result.length());
+            length.flip();
 
-            if (bfs[1].position() == l) {
-                bfs[1].flip();
-                String msg = new String(bfs[1].array()).trim();
-                System.out.printf("Server: ricevuto %s | %d\n", msg, parseRequest(msg));
-                if (msg.equals(this.EXIT_CMD)) { // client logged out
-                    // TODO handle logout
-                    System.out.println("Server: logout from client " + c_channel.getRemoteAddress());
-                    key.cancel();
-                    c_channel.close();
-                } else {
-                    String result = msg + " " + this.ADD_ANSWER; // TODO get actual request result
-                    ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
-                    length.putInt(result.length());
-                    length.flip();
+            ByteBuffer message = ByteBuffer.wrap(result.getBytes());
 
-                    ByteBuffer message = ByteBuffer.wrap(result.getBytes());
-                    
-                    ByteBuffer[] atc = {length , message};
-                    c_channel.register(sel, SelectionKey.OP_WRITE, atc);
-                    // c_channel.register(sel, SelectionKey.OP_WRITE, result);
-                }
-            }
+            ByteBuffer[] atc = { length, message };
+            c_channel.register(sel, SelectionKey.OP_WRITE, atc);
         }
+
     }
 
     /**
@@ -163,16 +122,19 @@ class Server {
     private void sendResult(Selector sel, SelectionKey key) throws IOException {
         SocketChannel c_channel = (SocketChannel) key.channel();
         ByteBuffer[] answer = (ByteBuffer[]) key.attachment();
-        ByteBuffer toSend = ByteBuffer.allocate(answer[0].remaining() + answer[1].remaining()).put(answer[0]).put(answer[1]);
+        ByteBuffer toSend = ByteBuffer.allocate(answer[0].remaining() + answer[1].remaining()).put(answer[0])
+                .put(answer[1]);
         toSend.flip();
         c_channel.write(toSend);
         toSend.clear();
 
         answer[0].flip();
-        System.out.println("Server: sent "+ answer[0].getInt() + " bytes containing: " + new String(toSend.array()).trim() + " inviato al client " + c_channel.getRemoteAddress());
+        System.out.println("Server: sent " + answer[0].getInt() + " bytes containing: "
+                + new String(toSend.array()).trim() + " inviato al client " + c_channel.getRemoteAddress());
         if (toSend.hasRemaining()) {
             toSend.clear();
-            this.registerRead(sel, c_channel);
+            c_channel.register(sel, SelectionKey.OP_READ);
+
         }
 
     }
@@ -182,7 +144,7 @@ class Server {
         // No...?
         // login
         if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", s)) {
-            
+
         }
         // logout
         else if (Pattern.matches("^logout\\s+\\S+\\s*$", s)) {
@@ -202,11 +164,11 @@ class Server {
         }
         // follow user
         else if (Pattern.matches("^follow\\s+\\S+\\s*$", s)) {
-            
+
         }
         // unfollow user
         else if (Pattern.matches("^unfollow\\s+\\S+\\s*$", s)) {
-            
+
         }
         // view blog
         else if (Pattern.matches("^blog\\s*$", s)) {
@@ -222,36 +184,34 @@ class Server {
         }
         // show post
         else if (Pattern.matches("^show\\s+post\\s+\\d+\\s*$", s)) {
-            
+
         }
         // delete post
         else if (Pattern.matches("^delete\\s+post\\s+\\d+\\s*$", s)) {
-            
+
         }
         // rewin post
         else if (Pattern.matches("^rewin\\s+post\\s+\\d+\\s*$", s)) {
-            
+
         }
         // rate post
         else if (Pattern.matches("^rate\\s+post\\s+\\d+\\s+-?\\d+\\s*$", s)) {
-            
+
         }
         // add comment
         else if (Pattern.matches("^add\\s+comment\\s+\\d+\\s+\\S+\\s*$", s)) {
-            
+
         }
         // get wallet
         else if (Pattern.matches("^wallet\\s*$", s)) {
-        
+
         }
         // get wallet bitcoin
         else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {
-        
-        }
-        else {
+
+        } else {
             return 0; // no matches, show help ? //TODO
         }
-
 
         return 0;
     }

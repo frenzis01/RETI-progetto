@@ -15,7 +15,7 @@ import java.util.Set;
 import exceptions.ExistingUser;
 import exceptions.NotExistingUser;
 
-public class ServerMain {
+public class ServerInternal {
 
     private static int idPostCounter = 0; // i will write this in a json file
     private static HashSet<String> activeUsernames = new HashSet<>();
@@ -27,37 +27,8 @@ public class ServerMain {
     // we need it to notify the logged users
     private static HashMap<String, HashSet<String>> followers = new HashMap<>();
 
-    public ServerMain() {
+    public ServerInternal() {
         super();
-    }
-
-    public static void main(String args[]) {
-        try {
-
-            // RMI setup
-            ROSimp serverRMI = new ROSimp();
-            ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
-            LocateRegistry.createRegistry(1900);
-            LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
-            // Now ready to handle RMI registration and followers's update notifications
-
-            // fakefollower
-            // Thread.sleep(3000);
-            // System.out.println("3sec elapsed " + users.containsKey("username"));
-            // users.get("username").followers.add(new String("fakeusr"));
-            // serverRMI.update("username");
-
-            // TCP server setup
-            Server server = new Server(12345);
-            server.start();
-
-            // while(true) {
-            // Thread.sleep(800);
-            // server.update("");
-            // }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     private void createStubUser() throws ExistingUser {
@@ -98,56 +69,93 @@ public class ServerMain {
     };
 
     public HashSet<UserWrap> listUsers(String username) throws NotExistingUser {
-        if (username == null)
-            throw new NullPointerException();
-        if (!users.containsKey(username))
-            throw new NotExistingUser();
-        User user = users.get(username);
+        User user = checkUsername(username);
         HashSet<UserWrap> toRet = new HashSet<>();
         for (String tag : user.tags) {
-            tagsUsers.get(tag).forEach( (u) -> { toRet.add(new UserWrap(u)); });
+            tagsUsers.get(tag).forEach((u) -> {
+                toRet.add(new UserWrap(u));
+            });
         }
         return toRet; // TODO
     };
 
-    public UserWrap[] listFollowers(String user) {
+    public HashSet<UserWrap> listFollowers(String username) throws NotExistingUser {
+        User user = checkUsername(username);
+        HashSet<UserWrap> toRet = new HashSet<>();
+        for (String follower : user.followers)
+            toRet.add(new UserWrap(users.get(follower)));
         return null; // TODO
     };
 
-    public UserWrap[] listFollowing(String user) {
-        return null; // TODO
+    public HashSet<UserWrap> listFollowing(String username) throws NotExistingUser {
+        User user = checkUsername(username);
+        HashSet<UserWrap> toRet = new HashSet<>();
+        for (String followed : user.following)
+            toRet.add(new UserWrap(users.get(followed)));
+        return toRet;
     };
 
-    public int followUser(String username, String user) {
-
+    public int followUser(String toFollow, String username) throws NotExistingUser {
+        User user = checkUsername(username);
+        User followed = checkUsername(toFollow);
+        user.following.add(toFollow);
+        followed.followers.add(username);
+        ServerInternal.followers.get(toFollow).add(username);
         return 0;
     };
 
-    public Post[] viewBlog(String user) {
-        return null; // TODO
+    public int unfollowUser(String toUnfollow, String username) throws NotExistingUser {
+        User user = checkUsername(username);
+        User followed = checkUsername(toUnfollow);
+        user.following.remove(toUnfollow);
+        followed.followers.remove(username);
+        ServerInternal.followers.get(toUnfollow).remove(username);
+        // TODO should I report an error in case of "already not following"
+        return 0;
+    };
+
+    public HashSet<PostWrap> viewBlog(String username) throws NotExistingUser {
+        User user = checkUsername(username);
+        HashSet<PostWrap> toRet = new HashSet<>();
+        for (Integer idPost : user.blog) {
+            toRet.add(new PostWrap(ServerInternal.posts.get(idPost)));
+        }
+        return toRet;
     }; // displays the logged user's blog, no username param needed
 
-    public Post[] createPost(String titolo, String contenuto, String user) {
+    public HashSet<PostWrap> createPost(String titolo, String contenuto, String username) throws NotExistingUser {
+        User user = checkUsername(username);
+
         return null; // TODO
     };
 
-    public Post[] showFeed(String user) {
+    public HashSet<PostWrap> showFeed(String username) throws NotExistingUser {
+        User user = checkUsername(username);
+
         return null; // TODO
     };
 
-    public int deletePost(int idPost, String user) {
+    public int deletePost(int idPost, String username) throws NotExistingUser {
+        User user = checkUsername(username);
+
         return 0; // TODO
     };
 
-    public int rewinPost(int idPost, String user) {
+    public int rewinPost(int idPost, String username) throws NotExistingUser {
+        User user = checkUsername(username);
+
         return 0; // TODO
     };
 
-    public int ratePost(int idPost, int vote, String user) {
+    public int ratePost(int idPost, int vote, String username) throws NotExistingUser {
+        User user = checkUsername(username);
+
         return 0; // TODO
     };
 
-    public int addComment(int idPost, String comment, String user) {
+    public int addComment(int idPost, String comment, String username) throws NotExistingUser {
+        User user = checkUsername(username);
+
         return 0; // TODO
     };
     // TODO public Transaction[] getWallet (){};
@@ -165,12 +173,20 @@ public class ServerMain {
         }
     }
 
+    private static User checkUsername(String username) throws NotExistingUser {
+        if (username == null)
+            throw new NullPointerException();
+        if (!users.containsKey(username))
+            throw new NotExistingUser();
+        return users.get(username);
+    }
+
     private static class User {
         final String username;
         final String password;
 
         // ArrayList<Post> myownposts; // probab not needed
-        ArrayList<Integer> blog; // better to save post ID's or Post itself?
+        HashSet<Integer> blog; // better to save post ID's or Post itself?
         // probab it is better to keep trace of the ID's, considering that a single post
         // may appear in more blogs. Secondarily,
         // I can put all posts (with their content)
@@ -202,13 +218,30 @@ public class ServerMain {
 
             this.followers = new HashSet<String>();
             this.following = new HashSet<String>();
+            this.blog = new HashSet<Integer>();
 
-            ServerMain.followers.put(this.username, new HashSet<String>());
+            ServerInternal.followers.put(this.username, new HashSet<String>());
         }
 
         // The end user doesn't need to distinguish autor from curator rewards probab
 
     };
+
+    public class PostWrap {
+        final String owner;
+        final int idPost, upvote, downvote;
+        final String content;
+        final HashMap<String, String> comments;
+
+        public PostWrap(Post p) {
+            this.owner = new String(p.owner);
+            this.idPost = p.idPost;
+            this.upvote = p.upvote.size();
+            this.downvote = p.downvote.size();
+            this.content = new String(p.content);
+            this.comments = new HashMap<>(p.comments);
+        }
+    }
 
     private class Post {
 
@@ -224,8 +257,9 @@ public class ServerMain {
             this.idPost = idPostCounter++;
             this.owner = new String(owner);
             this.content = new String(content);
-
             posts.put(this.idPost, this);
+
+            // This isn't automatically added to owner.posts
         }
 
         // public int getId() {return idPost;};

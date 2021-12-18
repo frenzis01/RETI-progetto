@@ -14,17 +14,17 @@ public class Client {
 
     /**
      * Default constructor
+     * 
      * @param port listening port
      */
-    public Client(int port){
+    public Client(int port) {
         this.port = port;
         this.exit = false;
     }
 
-    public void start(){
+    public void start() {
 
-        try ( SocketChannel client = SocketChannel.open(new InetSocketAddress("localhost", port)); )
-        {
+        try (SocketChannel client = SocketChannel.open(new InetSocketAddress("localhost", port));) {
             BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
 
             System.out.println("Client: connesso");
@@ -50,33 +50,18 @@ public class Client {
 
                 // We are going to exit after we read the server's response
                 // It's important to notify the server about the logout
-                if (msg.equals(this.EXIT_CMD)){
+                if (msg.equals(this.EXIT_CMD)) {
                     this.exit = true;
                     continue;
                 }
-                ByteBuffer reply[] = new ByteBuffer[2];
-                reply[0] = ByteBuffer.allocate(Integer.BYTES);
-                System.out.println("test " + reply[0].remaining());
-                System.out.println("Read : " + client.read(reply[0]));
                 
-                reply[0].flip();
-                int replyLen = reply[0].getInt();
-                System.out.println("Reply : " + replyLen);
-                reply[1] = ByteBuffer.allocate(replyLen);
-                System.out.println("Read : " + client.read(reply[1]));
-
-                reply[1].flip();
-                System.out.printf("Server sent: %s\n", new String(reply[1].array()).trim());
-                reply[1].clear();
+                Util.readMsgFromSocket(client);
 
             }
             System.out.println("Client: logout");
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-
 }
-
