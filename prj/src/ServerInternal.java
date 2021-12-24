@@ -6,13 +6,17 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.*;
 import java.rmi.server.UnicastRemoteObject;
+import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 
 import exceptions.ExistingUser;
+import exceptions.NotExistingPost;
 import exceptions.NotExistingUser;
 
 public class ServerInternal {
@@ -123,40 +127,100 @@ public class ServerInternal {
         return toRet;
     }; // displays the logged user's blog, no username param needed
 
-    public HashSet<PostWrap> createPost(String titolo, String contenuto, String username) throws NotExistingUser {
+    public PostWrap createPost(String titolo, String contenuto, String username) throws NotExistingUser {
         User user = checkUsername(username);
-
-        return null; // TODO
+        if (titolo == null || contenuto == null) throw new NullPointerException();
+        Post newPost = new Post(titolo,contenuto,username);    
+        return new PostWrap(newPost);
     };
 
     public HashSet<PostWrap> showFeed(String username) throws NotExistingUser {
         User user = checkUsername(username);
-
-        return null; // TODO
+        HashSet<PostWrap> toRet = new HashSet<>();
+        // iterates over the set of users the client follows
+        // for each of them retrieves all of their posts (aka blog)
+        for (String followed : user.following) {
+            User followedUser = checkUsername(followed); // this should never throw an exception
+            followedUser.blog.forEach((Integer p) -> { toRet.add(new PostWrap(posts.get(p))); });
+        }
+        return toRet;
     };
 
-    public int deletePost(int idPost, String username) throws NotExistingUser {
+    /**
+     * Remove a post from winsome
+     * @param idPost
+     * @param username
+     * @return 0 success, 1 user isn't the post owner
+     * @throws NotExistingUser
+     * @throws NotExistingPost
+     */
+    public int deletePost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
-
-        return 0; // TODO
+        Post p = checkPost(idPost);
+        if (username.equals(p.owner)) {
+            posts.remove(idPost);
+            // We have to remove the post from every blog
+            /** //TODO this has linear cost. Would it be better to skip this session
+             * and every time that we reference a post from a user's blog check if the post
+             * actually exists? it might be better in terms of performance, but requires a better
+             * error management system
+             */
+            users.forEach( (String name, User u) -> {
+                u.blog.remove(idPost);
+            });
+            return 0;
+        }
+        return 1; // the client isn't the owner
     };
 
-    public int rewinPost(int idPost, String username) throws NotExistingUser {
+    /**
+     * rewin a Post made by another user. A client cannot rewin its own posts 
+     * @param idPost
+     * @param username
+     * @return 0 success, 1 user is the post owner
+     * @throws NotExistingUser
+     * @throws NotExistingPost
+     */
+    public int rewinPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
-
-        return 0; // TODO
+        Post p = checkPost(idPost);
+        if (username.equals(p.owner)) return 1;
+        user.blog.add(p.idPost);
+        p.rewiners.add(username);
+        return 0;
     };
 
-    public int ratePost(int idPost, int vote, String username) throws NotExistingUser {
+    /**
+     * 
+     * @param idPost
+     * @param vote
+     * @param username
+     * @return 0 success, 1 given post isn't in the user's feed
+     * @throws NotExistingUser
+     * @throws NotExistingPost
+     */
+    public int ratePost(int idPost, int vote, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
-
-        return 0; // TODO
+        Post p = checkPost(idPost);
+        // check if the post is in the user's feed
+        if (!checkFeed(user, p))
+            return 1; 
+        if (vote >= 0)
+            p.upvote.add(username);
+        else
+            p.downvote.add(username);
+        return 0;
     };
 
-    public int addComment(int idPost, String comment, String username) throws NotExistingUser {
+    public int addComment(int idPost, String comment, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
-
-        return 0; // TODO
+        Post p = checkPost(idPost);
+        if (!checkFeed(user, p))
+            return 1;
+        if (!p.comments.containsKey(username))
+            p.comments.put(username, new HashSet<>());
+        p.comments.get(username).add(comment);
+        return 0;
     };
     // TODO public Transaction[] getWallet (){};
     // TODO public Transaction[] getWalletInBitcoin (){};
@@ -179,6 +243,24 @@ public class ServerInternal {
         if (!users.containsKey(username))
             throw new NotExistingUser();
         return users.get(username);
+    }
+
+    private static Post checkPost(int idPost) throws NotExistingPost {
+        if (!users.containsKey(idPost))
+            throw new NotExistingPost();
+        return posts.get(idPost);
+    }
+
+    /**
+     * Check if a Post 'p' is in 'user' 's feed
+     * @param user
+     * @param p
+     * @return
+     */
+    private static boolean checkFeed (User user, Post p) {
+        if (!user.following.contains(p.owner) && Collections.disjoint(user.following,p.rewiners) == true)
+            return false;
+        return true; 
     }
 
     private static class User {
@@ -231,7 +313,8 @@ public class ServerInternal {
         final String owner;
         final int idPost, upvote, downvote;
         final String content;
-        final HashMap<String, String> comments;
+        final HashMap<String, HashSet<String>> comments;
+        final Timestamp date;
 
         public PostWrap(Post p) {
             this.owner = new String(p.owner);
@@ -240,6 +323,7 @@ public class ServerInternal {
             this.downvote = p.downvote.size();
             this.content = new String(p.content);
             this.comments = new HashMap<>(p.comments);
+            this.date = (Timestamp)p.date.clone();
         }
     }
 
@@ -247,16 +331,26 @@ public class ServerInternal {
 
         final int idPost;
         final String owner;
+        final String title;
         final String content;
+        final Timestamp date;
         HashSet<String> upvote;
         HashSet<String> downvote;
-        HashMap<String, String> comments;
+        HashMap<String, HashSet<String>> comments;
+        HashSet<String> rewiners; 
+        // useful to check if a post should appear in someone's feed
 
         // default constructor
-        public Post(String owner, String content) {
+        public Post(String title, String owner, String content) {
             this.idPost = idPostCounter++;
             this.owner = new String(owner);
+            this.title = new String(title);
             this.content = new String(content);
+            this.date = new Timestamp(System.currentTimeMillis());
+            this.comments = new HashMap<>();
+            this.rewiners = new HashSet<>();
+            this.upvote = new HashSet<>();
+            this.downvote = new HashSet<>();
             posts.put(this.idPost, this);
 
             // This isn't automatically added to owner.posts
