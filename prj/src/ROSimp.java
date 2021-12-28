@@ -16,15 +16,14 @@ public class ROSimp extends RemoteServer implements ROSint {
     public int register(String username, String password, String tags) throws RemoteException, ExistingUser {
         if (username == null || password == null || tags == null)
             throw new NullPointerException();
-        if (ServerMain.usernameUnavailable(username) == true)
+        if (ServerInternal.usernameUnavailable(username) == true)
             return 1;
         if (tags.split("\\s+").length > 5)
             return 2;
         
-        ServerMain.addUser(new String(username), new String(password), new String(tags));
+        ServerInternal.addUser(new String(username), new String(password), new String(tags));
         // debug
         System.out.println("DUMB New User registered: " + username + " " + password + " " + tags);
-        
         return 0;
     }
 
@@ -49,7 +48,7 @@ public class ROSimp extends RemoteServer implements ROSint {
     public synchronized void update(String followed) throws RemoteException {
         System.out.println("Starting callbacks.");
         if (this.loggedUsers.containsKey(followed)) {
-            this.loggedUsers.get(followed).newFollowers(ServerMain.getFollowers(followed));
+            this.loggedUsers.get(followed).newFollowers(ServerInternal.getFollowers(followed));
         }
         System.out.println("Callbacks complete.");
     }

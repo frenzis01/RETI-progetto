@@ -44,7 +44,7 @@ public class ServerInternal {
     };
 
     public static void addUser(String username, String password, String tags) throws ExistingUser {
-        users.put(username, new User(username, password, tags));
+        users.put(username, new ServerInternal().new User(username, password, tags));
         activeUsernames.add(username);
     }
 
@@ -59,7 +59,7 @@ public class ServerInternal {
      * @return 0 success, 1 login failed
      * @throws NullPointerException
      */
-    public int login(String username, String password) {
+    public static int login(String username, String password) {
         if (username == null || password == null)
             throw new NullPointerException();
         if (users.containsKey(username) && users.get(username).password.equals(password))
@@ -67,39 +67,71 @@ public class ServerInternal {
         return 1;
     };
 
-    public void logout(String username) {
+    /**
+     * 
+     * Does this have any sense at all ?
+     * //TODO
+     * @param username
+     */
+    public static void logout(String username) {
         if (username == null)
             throw new NullPointerException();
+        
     };
 
-    public HashSet<UserWrap> listUsers(String username) throws NotExistingUser {
+    /**
+     * 
+     * @param username
+     * @return the set of users who have at least on tag in common with the requestor
+     * @throws NotExistingUser
+     */
+    public static HashSet<UserWrap> listUsers(String username) throws NotExistingUser {
         User user = checkUsername(username);
         HashSet<UserWrap> toRet = new HashSet<>();
         for (String tag : user.tags) {
             tagsUsers.get(tag).forEach((u) -> {
-                toRet.add(new UserWrap(u));
+                if(!u.username.equals(username)){
+                    toRet.add(new ServerInternal().new UserWrap(u)); // TODO okay to instantiate ServerInternal like this?
+                }
             });
         }
-        return toRet; // TODO
-    };
-
-    public HashSet<UserWrap> listFollowers(String username) throws NotExistingUser {
-        User user = checkUsername(username);
-        HashSet<UserWrap> toRet = new HashSet<>();
-        for (String follower : user.followers)
-            toRet.add(new UserWrap(users.get(follower)));
-        return null; // TODO
-    };
-
-    public HashSet<UserWrap> listFollowing(String username) throws NotExistingUser {
-        User user = checkUsername(username);
-        HashSet<UserWrap> toRet = new HashSet<>();
-        for (String followed : user.following)
-            toRet.add(new UserWrap(users.get(followed)));
         return toRet;
     };
 
-    public int followUser(String toFollow, String username) throws NotExistingUser {
+    /**
+     * @param username
+     * @return the set of users who are following the requestor
+     * @throws NotExistingUser
+     */
+    public static HashSet<UserWrap> listFollowers(String username) throws NotExistingUser {
+        User user = checkUsername(username);
+        HashSet<UserWrap> toRet = new HashSet<>();
+        for (String follower : user.followers)
+            toRet.add(new ServerInternal().new UserWrap(users.get(follower)));
+        return toRet;
+    };
+
+    /**
+     * @param username
+     * @return the set of users followed by the requestor
+     * @throws NotExistingUser
+     */
+    public static HashSet<UserWrap> listFollowing(String username) throws NotExistingUser {
+        User user = checkUsername(username);
+        HashSet<UserWrap> toRet = new HashSet<>();
+        for (String followed : user.following)
+            toRet.add(new ServerInternal().new UserWrap(users.get(followed)));
+        return toRet;
+    };
+
+    /**
+     * Removes a user from the requestor set of followed users
+     * @param toFollow
+     * @param username
+     * @return
+     * @throws NotExistingUser
+     */
+    public static int followUser(String toFollow, String username) throws NotExistingUser {
         User user = checkUsername(username);
         User followed = checkUsername(toFollow);
         user.following.add(toFollow);
@@ -108,40 +140,65 @@ public class ServerInternal {
         return 0;
     };
 
-    public int unfollowUser(String toUnfollow, String username) throws NotExistingUser {
+    /**
+     * Removes a user from the requestor set of followed users
+     * @param toUnfollow
+     * @param username
+     * @return 
+     * @throws NotExistingUser
+     */
+    public static int unfollowUser(String toUnfollow, String username) throws NotExistingUser {
         User user = checkUsername(username);
         User followed = checkUsername(toUnfollow);
         user.following.remove(toUnfollow);
         followed.followers.remove(username);
         ServerInternal.followers.get(toUnfollow).remove(username);
-        // TODO should I report an error in case of "already not following"
+        // TODO should I report an error in case of "already not following"? Don't think so
         return 0;
     };
 
-    public HashSet<PostWrap> viewBlog(String username) throws NotExistingUser {
+    /**
+     * @param username
+     * @return set of posts made or rewined by the user
+     * @throws NotExistingUser
+     */
+    public static HashSet<PostWrap> viewBlog(String username) throws NotExistingUser {
         User user = checkUsername(username);
         HashSet<PostWrap> toRet = new HashSet<>();
         for (Integer idPost : user.blog) {
-            toRet.add(new PostWrap(ServerInternal.posts.get(idPost)));
+            toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
         }
         return toRet;
     }; // displays the logged user's blog, no username param needed
 
-    public PostWrap createPost(String titolo, String contenuto, String username) throws NotExistingUser {
+    /**
+     * add a Post to the client's blog
+     * @param titolo
+     * @param contenuto
+     * @param username
+     * @return
+     * @throws NotExistingUser
+     */
+    public static PostWrap createPost(String titolo, String contenuto, String username) throws NotExistingUser {
         User user = checkUsername(username);
         if (titolo == null || contenuto == null) throw new NullPointerException();
-        Post newPost = new Post(titolo,contenuto,username);    
-        return new PostWrap(newPost);
+        Post newPost = new ServerInternal().new Post(titolo,contenuto,username);    
+        return new ServerInternal().new PostWrap(newPost);
     };
 
-    public HashSet<PostWrap> showFeed(String username) throws NotExistingUser {
+    /**
+     * @param username
+     * @return the set of posts made or rewined by the users followed by the requestor
+     * @throws NotExistingUser
+     */
+    public static HashSet<PostWrap> showFeed(String username) throws NotExistingUser {
         User user = checkUsername(username);
         HashSet<PostWrap> toRet = new HashSet<>();
         // iterates over the set of users the client follows
         // for each of them retrieves all of their posts (aka blog)
         for (String followed : user.following) {
             User followedUser = checkUsername(followed); // this should never throw an exception
-            followedUser.blog.forEach((Integer p) -> { toRet.add(new PostWrap(posts.get(p))); });
+            followedUser.blog.forEach((Integer p) -> { toRet.add(new ServerInternal().new PostWrap(posts.get(p))); });
         }
         return toRet;
     };
@@ -154,7 +211,7 @@ public class ServerInternal {
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
-    public int deletePost(int idPost, String username) throws NotExistingUser, NotExistingPost {
+    public static int deletePost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
         Post p = checkPost(idPost);
         if (username.equals(p.owner)) {
@@ -181,7 +238,7 @@ public class ServerInternal {
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
-    public int rewinPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
+    public static int rewinPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
         Post p = checkPost(idPost);
         if (username.equals(p.owner)) return 1;
@@ -199,7 +256,7 @@ public class ServerInternal {
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
-    public int ratePost(int idPost, int vote, String username) throws NotExistingUser, NotExistingPost {
+    public static int ratePost(int idPost, int vote, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
         Post p = checkPost(idPost);
         // check if the post is in the user's feed
@@ -212,7 +269,17 @@ public class ServerInternal {
         return 0;
     };
 
-    public int addComment(int idPost, String comment, String username) throws NotExistingUser, NotExistingPost {
+    /**
+     * add comment to a Post, a user can add more than one comment to a single post. A user can comment a Post
+     * only if it is in its feed
+     * @param idPost
+     * @param comment
+     * @param username
+     * @return 
+     * @throws NotExistingUser
+     * @throws NotExistingPost
+     */
+    public static int addComment(int idPost, String comment, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
         Post p = checkPost(idPost);
         if (!checkFeed(user, p))
@@ -222,19 +289,46 @@ public class ServerInternal {
         p.comments.get(username).add(comment);
         return 0;
     };
-    // TODO public Transaction[] getWallet (){};
-    // TODO public Transaction[] getWalletInBitcoin (){};
+    // TODO public static Transaction[] getWallet (){};
+    // TODO public static Transaction[] getWalletInBitcoin (){};
 
-    public class UserWrap {
+    public class UserWrap implements Comparable<UserWrap> {
         final String username;
-        final String[] tags, following, followers;
+        final String[] tags /*, following, followers */;
+        final HashSet<String> followers, following;
 
-        private UserWrap(User u) {
+        private UserWrap(User u){
             this.username = u.username;
             this.tags = u.tags.clone();
-            this.followers = (String[]) u.followers.toArray().clone();
-            this.following = (String[]) u.following.toArray().clone();
+            // System.out.print("------|||| ");
+            // for (String tag : this.tags) {
+            //     System.out.print(tag);
+            // }
+            // System.out.println("");
+            // this.followers = (String[]) u.followers.toArray()/*.clone()*/;
+            // this.following = (String[]) u.following.toArray()/*.clone()*/;
+            this.followers = new HashSet<String>(u.followers);
+            this.following = new HashSet<String>(u.following);
         }
+
+        public int compareTo (UserWrap u) {
+            return this.username.compareTo(u.username);
+        }
+
+        @Override
+        public boolean equals (Object o) {
+            if (!(o instanceof UserWrap))
+                return false;
+            if (((UserWrap)o).username.equals(this.username))
+                return true;
+            return false;
+        }
+
+        @Override
+        public int hashCode () {
+            return this.username.hashCode();
+        }
+
     }
 
     private static User checkUsername(String username) throws NotExistingUser {
@@ -245,6 +339,9 @@ public class ServerInternal {
         return users.get(username);
     }
 
+    /**
+     * check's if post exists
+     */
     private static Post checkPost(int idPost) throws NotExistingPost {
         if (!users.containsKey(idPost))
             throw new NotExistingPost();
@@ -263,7 +360,7 @@ public class ServerInternal {
         return true; 
     }
 
-    private static class User {
+    private class User {
         final String username;
         final String password;
 

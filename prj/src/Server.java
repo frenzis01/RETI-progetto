@@ -1,19 +1,28 @@
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import exceptions.NotExistingUser;
+
+
 
 class Server {
     private final String EXIT_CMD = "logout";
     private final int port;
     private final String ADD_ANSWER = "echoed by server";
     public int activeConnections;
+    private HashMap<String,String> loggedUsers = new HashMap<>(); // (Remote) SocketAddress -> Username
 
     /**
      *
@@ -71,8 +80,10 @@ class Server {
                         }
                     } catch (IOException e) { // if the client prematurely disconnects
                         e.printStackTrace();
-                        key.channel().close();
-                        key.cancel();
+                        System.out.println(" |\tClient disconnected: " + ((SocketChannel)key.channel()).getRemoteAddress());
+                        // key.channel().close();
+                        // key.cancel();
+                        logoutHandler(key); // won't delete loggedUsers entry ? //TODO
                     }
                 }
             }
@@ -91,16 +102,19 @@ class Server {
     private void getClientRequest(Selector sel, SelectionKey key) throws IOException {
         // Create new SocketChannel with the Client
         SocketChannel c_channel = (SocketChannel) key.channel();
-
+        
         String msg = Util.readMsgFromSocket(c_channel);
-        System.out.printf("Server: ricevuto %s | %d\n", msg, parseRequest(msg));
-        if (msg.equals(this.EXIT_CMD)) { // client logged out
-            // TODO handle logout
+        System.out.print("Server: ricevuto " + msg);
+        String res = parseRequest(msg, c_channel.getRemoteAddress().toString());
+        System.out.println(" | " + res);
+        if (Pattern.matches("^logout\\s+\\S+\\s*$", msg)) { // client logged out
             System.out.println("Server: logout from client " + c_channel.getRemoteAddress());
-            key.cancel();
-            c_channel.close();
+            // c_channel.close();
+            // key.cancel();
+            ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
+            logoutHandler(key);
         } else {
-            String result = msg + " " + this.ADD_ANSWER; // TODO get actual request result
+            String result = msg + " " + this.ADD_ANSWER + (res != null ? ("\n" + res) : ""); // TODO get actual request result
             ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
             length.putInt(result.length());
             length.flip();
@@ -130,7 +144,7 @@ class Server {
 
         answer[0].flip();
         System.out.println("Server: sent " + answer[0].getInt() + " bytes containing: "
-                + new String(toSend.array()).trim() + " inviato al client " + c_channel.getRemoteAddress());
+                + new String(toSend.array()).trim() + " || inviato al client " + c_channel.getRemoteAddress());
         if (toSend.hasRemaining()) {
             toSend.clear();
             c_channel.register(sel, SelectionKey.OP_READ);
@@ -139,20 +153,52 @@ class Server {
 
     }
 
-    private int parseRequest(String s) {
+    private void logoutHandler (SelectionKey key) throws IOException {
+        // if the client has disconnected c.getRemoteAddress returns null
+        SocketChannel c = (SocketChannel) key.channel();
+        SocketAddress cAddr = c.getRemoteAddress();
+        if (cAddr != null)
+            loggedUsers.remove(cAddr.toString());
+        key.channel().close();
+        key.cancel();
+    }
+
+    
+    private String parseRequest(String s, String k) {
         // TODO logout gets recognized before calling parseRequest using EXIT_CMD (?)
         // No...?
         // login
+        String toRet = "";
         if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", s)) {
-
+            String param [] = s.split("\\s+");
+            if (ServerInternal.login(param[1], param[2]) == 0){
+                /**
+                 * This 'put' will overwrite the entry of a user who prematurely disconnected
+                 * We might not be able to retrieve the address of a SelectionKey associated
+                 * with an already disconnected client (//TODO make sure of this)
+                 */
+                loggedUsers.put(k, param[1]);
+                // System.out.println("user logged in: " + param[1] + " " + param[2]);
+                toRet = "--SUCCESSFULLY LOGGED IN";
+            }
+            else toRet = "Some error";
         }
-        // logout
-        else if (Pattern.matches("^logout\\s+\\S+\\s*$", s)) {
-
-        }
+        // // logout
+        // else if (Pattern.matches("^logout\\s+\\S+\\s*$", s)) {
+        //     logoutHandler(key);
+        // }
         // list users
         else if (Pattern.matches("^list\\s+users\\s*$", s)) {
-
+            String u = loggedUsers.get(k); 
+            if (u != null) {
+                try {
+                    HashSet<ServerInternal.UserWrap> uWithCommonTags = ServerInternal.listUsers(u);
+                    toRet = userWrap2String(uWithCommonTags);
+                } catch (NotExistingUser e) {
+                    toRet = "Some error"; // TODO
+                }
+                
+            } 
         }
         // list followers
         else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
@@ -210,9 +256,17 @@ class Server {
         else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {
 
         } else {
-            return 0; // no matches, show help ? //TODO
+            return toRet; // no matches, show help ? //TODO
         }
 
-        return 0;
+        return toRet;
+    }
+    
+    private static String userWrap2String (HashSet<ServerInternal.UserWrap> users) {
+        String toRet = "Utente \t|\t Tag\n";
+        for (ServerInternal.UserWrap u : users) {
+            toRet = toRet + u.username + " \t|\t " + Arrays.toString(u.tags) + "\n";
+        }
+        return toRet;
     }
 }
