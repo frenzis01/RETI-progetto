@@ -23,11 +23,6 @@ public class Util {
         printd("msg : " + msgLen);
         msg[1] = ByteBuffer.allocate(msgLen);
         printd("Read : " + s.read(msg[1]));
-        // this would be blocking
-        
-        // while (msg[1].remaining() != 0) {
-        //     printd("Read : " + s.read(msg[1]));
-        // }
 
         msg[1].flip();
         String reply = new String(msg[1].array()).trim();

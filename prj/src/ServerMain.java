@@ -57,9 +57,9 @@ public class ServerMain {
         ServerInternal.PostWrap p = ServerInternal.createPost("p2", "dolor sit amet", "u1");
 
         // Posts interaction
-        System.out.println(p.idPost + " | " + ServerInternal.addComment(p.idPost, "consectetur adipisci", "u2"));
-        // ServerInternal.debugShowPost(p.idPost);
-        System.out.println(Server.postWrap2String(ServerInternal.showPost(p.idPost, "u1")));
+        ServerInternal.addComment(p.idPost, "consectetur adipisci", "u2");
+        ServerInternal.addComment(p.idPost, "consectetur adipiscy", "u2");
+        ServerInternal.addComment(p.idPost, "consectetur adipisce", "u2");
         ServerInternal.rewinPost(p.idPost, "u3");
 
     }

@@ -11,13 +11,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.Map.Entry;
 import java.util.regex.Pattern;
 
 import exceptions.NotExistingPost;
 import exceptions.NotExistingUser;
 
 class Server {
-    private final String EXIT_CMD = "logout";
     private final int port;
     public int activeConnections;
     private HashMap<String, String> loggedUsers = new HashMap<>(); // (Remote) SocketAddress -> Username
@@ -113,8 +113,7 @@ class Server {
             ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
             logoutHandler(key);
         } else {
-            String result = /* msg + " " + */ (res != null ? ("\n" + res) : ""); // TODO get actual request
-                                                                                             // result
+            String result = (res != null ? ("\n" + res) : "");
             ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
             length.putInt(result.length());
             length.flip();
@@ -178,7 +177,7 @@ class Server {
                  */
                 loggedUsers.put(k, param[1]);
                 // System.out.println("user logged in: " + param[1] + " " + param[2]);
-                toRet = "--SUCCESSFULLY LOGGED IN";
+                toRet = "-Successfully logged in";
             } else
                 toRet = "Some error";
         }
@@ -220,10 +219,10 @@ class Server {
                     toRet = postWrapSet2String(ServerInternal.viewBlog(u));
                 }
                 // create post
-                else if (Pattern.matches("^post\\s+\\S+\\s+\\S+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    ServerInternal.PostWrap p = ServerInternal.createPost(param[1], param[2], u);
-                    toRet = "New post created: " + p.idPost;
+                else if (Pattern.matches("^post\\s+\".+\"\\s+\".+\"\\s*$", s)) {
+                    String param[] = s.split("\"");
+                    ServerInternal.PostWrap p = ServerInternal.createPost(param[1], param[3], u);
+                    toRet = "New post created: " + p.idPost /* + " " + param[1] + " " + param[3] */;
                 }
                 // show feed
                 else if (Pattern.matches("^show\\s+feed\\s*$", s)) {
@@ -237,35 +236,47 @@ class Server {
                 // delete post
                 else if (Pattern.matches("^delete\\s+post\\s+\\d+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    ServerInternal.deletePost(Integer.parseInt(param[2]), u);
-                    toRet = "Post " + param[2] + "deleted";
+                    if (ServerInternal.deletePost(Integer.parseInt(param[2]), u) == 1)
+                        toRet = "Cannot delete a post which isn't owned by you";
+                    else
+                        toRet = "Post " + param[2] + "deleted";
                 }
                 // rewin post
                 else if (Pattern.matches("^rewin\\s+post\\s+\\d+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    ServerInternal.rewinPost(Integer.parseInt(param[2]), u);
-                    toRet = "Post " + param[2] + "rewined";
+                    if (ServerInternal.rewinPost(Integer.parseInt(param[2]), u) == 1)
+                        toRet = "Cannot rewin a post made by yourself";
+                    else
+                        toRet = "Post " + param[2] + "rewined";
                 }
                 // rate post
-                else if (Pattern.matches("^rate\\s+post\\s+\\d+\\s+-?\\d+\\s*$", s)) {
+                else if (Pattern.matches("^rate\\s+post\\s+\\d+\\s[+-]?\\d+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    ServerInternal.ratePost(Integer.parseInt(param[2]),Integer.parseInt(param[3]), u); // TODO
-                    toRet = "Post " + param[2] + "deleted";
+                    int vote = Integer.parseInt(param[2]);
+                    int res = ServerInternal.ratePost(vote, Integer.parseInt(param[3]), u);
+                    if (res == 1)
+                        toRet = "Cannot rate a post which isn't in your feed";
+                    else if (res == 2)
+                        toRet = "Already voted";
+                    else
+                        toRet = "Post " + param[2] + (vote >= 0 ? " upvoted" : " downvoted");
                 }
                 // add comment
                 else if (Pattern.matches("^comment\\s+\\d+\\s+\\S+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    ServerInternal.addComment(Integer.parseInt(param[1]), param[2], u);
-                    toRet = "Comment added to post " + param[1];
+                    if (ServerInternal.addComment(Integer.parseInt(param[1]), param[2], u) == 1)
+                        toRet = "Cannot rate a post which isn't in your feed";
+                    else
+                        toRet = "Comment added to post " + param[1];
                 }
                 // get wallet
                 else if (Pattern.matches("^wallet\\s*$", s)) {
-                    //TODO
+                    // TODO
                     toRet = "Wallet not yet implemented";
                 }
                 // get wallet bitcoin
                 else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {
-                    //TODO
+                    // TODO
                     toRet = "Wallet not yet implemented";
                 } else {
                     return toRet = "Unknown command: " + s; // no matches, show help ? //TODO
@@ -296,15 +307,17 @@ class Server {
         return toRet;
     }
 
-    public static String postWrap2String(ServerInternal.PostWrap p) {
-        String toRet = "Title: " + p.title + "\nContent: " + p.content + "\nVotes: " + p.upvote +
-                "+ | " + p.downvote + "-\nComments:\n";
-        p.comments.forEach((u, comments) -> {
-            System.out.println("\t" + u + ":");
-            comments.forEach((c) -> {
-                System.out.println("\t " + c);
+    private static String postWrap2String(ServerInternal.PostWrap p) {
+        var wrapper = new Object() {
+            String toRet = "Title: " + p.title + "\nContent: " + p.content + "\nVotes: " + p.upvote +
+                    "+ | " + p.downvote + "-\nComments:\n";
+        };
+        p.comments.forEach((u, comms) -> {
+            wrapper.toRet += "\t" + u + ":\n";
+            comms.forEach((c) -> {
+                wrapper.toRet += "\t " + c + "\n";
             });
         });
-        return toRet;
+        return wrapper.toRet;
     }
 }

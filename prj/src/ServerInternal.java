@@ -266,6 +266,14 @@ public class ServerInternal {
         return 0;
     };
 
+    /**
+     * 
+     * @param idPost
+     * @param username
+     * @return
+     * @throws NotExistingUser
+     * @throws NotExistingPost
+     */
     public static PostWrap showPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
         Post p = checkPost(idPost);
@@ -277,7 +285,7 @@ public class ServerInternal {
      * @param idPost
      * @param vote
      * @param username
-     * @return 0 success, 1 given post isn't in the user's feed
+     * @return 0 success, 1 given post isn't in the user's feed, 2 user has already voted
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -287,6 +295,9 @@ public class ServerInternal {
         // check if the post is in the user's feed
         if (!checkFeed(user, p))
             return 1;
+        // check if user has already voted
+        if (p.upvote.contains(username) || p.downvote.contains(username))
+            return 2;
         if (vote >= 0)
             p.upvote.add(username);
         else
@@ -302,7 +313,7 @@ public class ServerInternal {
      * @param idPost
      * @param comment
      * @param username
-     * @return
+     * @return 1 posts isnt in user's feed
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -469,11 +480,11 @@ public class ServerInternal {
             this.comments = new HashMap<String, HashSet<String>>();
             p.comments.forEach((k, v) -> {
                 System.out.println("key :" + k);
-                this.comments.put(new String(k), new HashSet<String>());
+                this.comments.put(k, new HashSet<String>());
                 // this.comments.get(k).addAll(v);
                 v.forEach( (c) -> { 
                     System.out.println(c);
-                    this.comments.get(k).add( new String(c)); });
+                    this.comments.get(k).add( c); });
             });
             this.date = (Timestamp) p.date.clone();
             this.title = new String(p.title);
@@ -550,18 +561,4 @@ public class ServerInternal {
 
         // TODO reward
     };
-
-    //TODO remove this
-    public static String debugShowPost (int idPost) throws NotExistingPost {
-        Post p = checkPost(idPost);
-        String toRet = "Title: " + p.title + "\nContent: " + p.content + "\nVotes: " + p.upvote +
-                "+ | " + p.downvote + "-\nComments:\n";
-        p.comments.forEach((u, comments) -> {
-            System.out.println("\t" + u + ":");
-            comments.forEach((c) -> {
-                System.out.println("\t " + c);
-            });
-        });
-        return toRet;
-    }
 }
