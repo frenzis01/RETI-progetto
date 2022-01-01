@@ -27,6 +27,7 @@ public class ClientMain {
             return;
         
         } catch (Exception e) {
+            System.out.println("Some error occurred while connecting to the server");
             e.printStackTrace();
         }
     }

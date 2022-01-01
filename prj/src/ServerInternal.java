@@ -13,7 +13,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import exceptions.ExistingUser;
 import exceptions.NotExistingPost;
@@ -71,18 +73,20 @@ public class ServerInternal {
      * 
      * Does this have any sense at all ?
      * //TODO
+     * 
      * @param username
      */
     public static void logout(String username) {
         if (username == null)
             throw new NullPointerException();
-        
+
     };
 
     /**
      * 
      * @param username
-     * @return the set of users who have at least on tag in common with the requestor
+     * @return the set of users who have at least on tag in common with the
+     *         requestor
      * @throws NotExistingUser
      */
     public static HashSet<UserWrap> listUsers(String username) throws NotExistingUser {
@@ -90,8 +94,9 @@ public class ServerInternal {
         HashSet<UserWrap> toRet = new HashSet<>();
         for (String tag : user.tags) {
             tagsUsers.get(tag).forEach((u) -> {
-                if(!u.username.equals(username)){
-                    toRet.add(new ServerInternal().new UserWrap(u)); // TODO okay to instantiate ServerInternal like this?
+                if (!u.username.equals(username)) {
+                    toRet.add(new ServerInternal().new UserWrap(u)); // TODO okay to instantiate ServerInternal like
+                                                                     // this?
                 }
             });
         }
@@ -126,6 +131,7 @@ public class ServerInternal {
 
     /**
      * Removes a user from the requestor set of followed users
+     * 
      * @param toFollow
      * @param username
      * @return
@@ -142,9 +148,10 @@ public class ServerInternal {
 
     /**
      * Removes a user from the requestor set of followed users
+     * 
      * @param toUnfollow
      * @param username
-     * @return 
+     * @return
      * @throws NotExistingUser
      */
     public static int unfollowUser(String toUnfollow, String username) throws NotExistingUser {
@@ -153,7 +160,8 @@ public class ServerInternal {
         user.following.remove(toUnfollow);
         followed.followers.remove(username);
         ServerInternal.followers.get(toUnfollow).remove(username);
-        // TODO should I report an error in case of "already not following"? Don't think so
+        // TODO should I report an error in case of "already not following"? Don't think
+        // so
         return 0;
     };
 
@@ -173,6 +181,7 @@ public class ServerInternal {
 
     /**
      * add a Post to the client's blog
+     * 
      * @param titolo
      * @param contenuto
      * @param username
@@ -181,14 +190,17 @@ public class ServerInternal {
      */
     public static PostWrap createPost(String titolo, String contenuto, String username) throws NotExistingUser {
         User user = checkUsername(username);
-        if (titolo == null || contenuto == null) throw new NullPointerException();
-        Post newPost = new ServerInternal().new Post(titolo,contenuto,username);    
+        if (titolo == null || contenuto == null)
+            throw new NullPointerException();
+        Post newPost = new ServerInternal().new Post(titolo, contenuto, username);
+        user.blog.add(newPost.idPost);
         return new ServerInternal().new PostWrap(newPost);
     };
 
     /**
      * @param username
-     * @return the set of posts made or rewined by the users followed by the requestor
+     * @return the set of posts made or rewined by the users followed by the
+     *         requestor
      * @throws NotExistingUser
      */
     public static HashSet<PostWrap> showFeed(String username) throws NotExistingUser {
@@ -198,13 +210,16 @@ public class ServerInternal {
         // for each of them retrieves all of their posts (aka blog)
         for (String followed : user.following) {
             User followedUser = checkUsername(followed); // this should never throw an exception
-            followedUser.blog.forEach((Integer p) -> { toRet.add(new ServerInternal().new PostWrap(posts.get(p))); });
+            followedUser.blog.forEach((Integer p) -> {
+                toRet.add(new ServerInternal().new PostWrap(posts.get(p)));
+            });
         }
         return toRet;
     };
 
     /**
      * Remove a post from winsome
+     * 
      * @param idPost
      * @param username
      * @return 0 success, 1 user isn't the post owner
@@ -217,12 +232,14 @@ public class ServerInternal {
         if (username.equals(p.owner)) {
             posts.remove(idPost);
             // We have to remove the post from every blog
-            /** //TODO this has linear cost. Would it be better to skip this session
+            /**
+             * //TODO this has linear cost. Would it be better to skip this session
              * and every time that we reference a post from a user's blog check if the post
-             * actually exists? it might be better in terms of performance, but requires a better
+             * actually exists? it might be better in terms of performance, but requires a
+             * better
              * error management system
              */
-            users.forEach( (String name, User u) -> {
+            users.forEach((String name, User u) -> {
                 u.blog.remove(idPost);
             });
             return 0;
@@ -231,7 +248,8 @@ public class ServerInternal {
     };
 
     /**
-     * rewin a Post made by another user. A client cannot rewin its own posts 
+     * rewin a Post made by another user. A client cannot rewin its own posts
+     * 
      * @param idPost
      * @param username
      * @return 0 success, 1 user is the post owner
@@ -241,11 +259,18 @@ public class ServerInternal {
     public static int rewinPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
         Post p = checkPost(idPost);
-        if (username.equals(p.owner)) return 1;
+        if (username.equals(p.owner))
+            return 1;
         user.blog.add(p.idPost);
         p.rewiners.add(username);
         return 0;
     };
+
+    public static PostWrap showPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
+        User user = checkUsername(username);
+        Post p = checkPost(idPost);
+        return new ServerInternal().new PostWrap(p);
+    }
 
     /**
      * 
@@ -261,7 +286,7 @@ public class ServerInternal {
         Post p = checkPost(idPost);
         // check if the post is in the user's feed
         if (!checkFeed(user, p))
-            return 1; 
+            return 1;
         if (vote >= 0)
             p.upvote.add(username);
         else
@@ -270,12 +295,14 @@ public class ServerInternal {
     };
 
     /**
-     * add comment to a Post, a user can add more than one comment to a single post. A user can comment a Post
+     * add comment to a Post, a user can add more than one comment to a single post.
+     * A user can comment a Post
      * only if it is in its feed
+     * 
      * @param idPost
      * @param comment
      * @param username
-     * @return 
+     * @return
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -292,45 +319,6 @@ public class ServerInternal {
     // TODO public static Transaction[] getWallet (){};
     // TODO public static Transaction[] getWalletInBitcoin (){};
 
-    public class UserWrap implements Comparable<UserWrap> {
-        final String username;
-        final String[] tags /*, following, followers */;
-        final HashSet<String> followers, following;
-
-        private UserWrap(User u){
-            this.username = u.username;
-            this.tags = u.tags.clone();
-            // System.out.print("------|||| ");
-            // for (String tag : this.tags) {
-            //     System.out.print(tag);
-            // }
-            // System.out.println("");
-            // this.followers = (String[]) u.followers.toArray()/*.clone()*/;
-            // this.following = (String[]) u.following.toArray()/*.clone()*/;
-            this.followers = new HashSet<String>(u.followers);
-            this.following = new HashSet<String>(u.following);
-        }
-
-        public int compareTo (UserWrap u) {
-            return this.username.compareTo(u.username);
-        }
-
-        @Override
-        public boolean equals (Object o) {
-            if (!(o instanceof UserWrap))
-                return false;
-            if (((UserWrap)o).username.equals(this.username))
-                return true;
-            return false;
-        }
-
-        @Override
-        public int hashCode () {
-            return this.username.hashCode();
-        }
-
-    }
-
     private static User checkUsername(String username) throws NotExistingUser {
         if (username == null)
             throw new NullPointerException();
@@ -343,21 +331,61 @@ public class ServerInternal {
      * check's if post exists
      */
     private static Post checkPost(int idPost) throws NotExistingPost {
-        if (!users.containsKey(idPost))
+        if (!posts.containsKey(idPost))
             throw new NotExistingPost();
         return posts.get(idPost);
     }
 
     /**
      * Check if a Post 'p' is in 'user' 's feed
+     * 
      * @param user
      * @param p
      * @return
      */
-    private static boolean checkFeed (User user, Post p) {
-        if (!user.following.contains(p.owner) && Collections.disjoint(user.following,p.rewiners) == true)
+    private static boolean checkFeed(User user, Post p) {
+        if (!user.following.contains(p.owner) && Collections.disjoint(user.following, p.rewiners) == true)
             return false;
-        return true; 
+        return true;
+    }
+
+    public class UserWrap implements Comparable<UserWrap> {
+        final String username;
+        final String[] tags /* , following, followers */;
+        final HashSet<String> followers, following;
+
+        private UserWrap(User u) {
+            this.username = u.username;
+            this.tags = u.tags.clone();
+            // System.out.print("------|||| ");
+            // for (String tag : this.tags) {
+            // System.out.print(tag);
+            // }
+            // System.out.println("");
+            // this.followers = (String[]) u.followers.toArray()/*.clone()*/;
+            // this.following = (String[]) u.following.toArray()/*.clone()*/;
+            this.followers = new HashSet<String>(u.followers);
+            this.following = new HashSet<String>(u.following);
+        }
+
+        public int compareTo(UserWrap u) {
+            return this.username.compareTo(u.username);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof UserWrap))
+                return false;
+            if (((UserWrap) o).username.equals(this.username))
+                return true;
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return this.username.hashCode();
+        }
+
     }
 
     private class User {
@@ -404,13 +432,31 @@ public class ServerInternal {
 
         // The end user doesn't need to distinguish autor from curator rewards probab
 
+        public int compareTo(User u) {
+            return this.username.compareTo(u.username);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof User))
+                return false;
+            if (((User) o).username.equals(this.username))
+                return true;
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return this.username.hashCode();
+        }
+
     };
 
-    public class PostWrap {
+    public class PostWrap implements Comparable<PostWrap> {
         final String owner;
         final int idPost, upvote, downvote;
-        final String content;
-        final HashMap<String, HashSet<String>> comments;
+        final String title, content;
+        HashMap<String, HashSet<String>> comments;
         final Timestamp date;
 
         public PostWrap(Post p) {
@@ -419,9 +465,38 @@ public class ServerInternal {
             this.upvote = p.upvote.size();
             this.downvote = p.downvote.size();
             this.content = new String(p.content);
-            this.comments = new HashMap<>(p.comments);
-            this.date = (Timestamp)p.date.clone();
+            // this.comments = new HashMap<>(p.comments); // TODO why doesnt this work :(
+            this.comments = new HashMap<String, HashSet<String>>();
+            p.comments.forEach((k, v) -> {
+                System.out.println("key :" + k);
+                this.comments.put(new String(k), new HashSet<String>());
+                // this.comments.get(k).addAll(v);
+                v.forEach( (c) -> { 
+                    System.out.println(c);
+                    this.comments.get(k).add( new String(c)); });
+            });
+            this.date = (Timestamp) p.date.clone();
+            this.title = new String(p.title);
         }
+
+        public int compareTo(PostWrap p) {
+            return p.idPost - this.idPost;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof PostWrap))
+                return false;
+            if (((PostWrap) o).idPost == this.idPost)
+                return true;
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Integer.hashCode(this.idPost);
+        }
+
     }
 
     private class Post {
@@ -434,11 +509,11 @@ public class ServerInternal {
         HashSet<String> upvote;
         HashSet<String> downvote;
         HashMap<String, HashSet<String>> comments;
-        HashSet<String> rewiners; 
+        HashSet<String> rewiners;
         // useful to check if a post should appear in someone's feed
 
         // default constructor
-        public Post(String title, String owner, String content) {
+        public Post(String title, String content, String owner) {
             this.idPost = idPostCounter++;
             this.owner = new String(owner);
             this.title = new String(title);
@@ -455,6 +530,38 @@ public class ServerInternal {
 
         // public int getId() {return idPost;};
 
+        public int compareTo(Post p) {
+            return p.idPost - this.idPost;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof Post))
+                return false;
+            if (((Post) o).idPost == this.idPost)
+                return true;
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Integer.hashCode(this.idPost);
+        }
+
         // TODO reward
     };
+
+    //TODO remove this
+    public static String debugShowPost (int idPost) throws NotExistingPost {
+        Post p = checkPost(idPost);
+        String toRet = "Title: " + p.title + "\nContent: " + p.content + "\nVotes: " + p.upvote +
+                "+ | " + p.downvote + "-\nComments:\n";
+        p.comments.forEach((u, comments) -> {
+            System.out.println("\t" + u + ":");
+            comments.forEach((c) -> {
+                System.out.println("\t " + c);
+            });
+        });
+        return toRet;
+    }
 }

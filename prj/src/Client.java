@@ -36,16 +36,15 @@ public class Client {
                 String msg = consoleReader.readLine().trim();
 
                 // we'll write first the length of the request
-                ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
-                length.putInt(msg.length());
-                length.flip();
-                client.write(length);
-                length.clear();
+                ByteBuffer request = ByteBuffer.allocate(Integer.BYTES + msg.getBytes().length);
+                request.putInt(msg.length()); // add request length before the request itself
 
-                // actual request
                 ByteBuffer readBuffer = ByteBuffer.wrap(msg.getBytes());
                 // no explicit encoding using UTF_8
-                client.write(readBuffer);
+                request.put(readBuffer);
+                request.flip();
+                client.write(request);
+                request.clear();
                 readBuffer.clear();
 
                 // We are going to exit after we read the server's response
@@ -55,7 +54,7 @@ public class Client {
                     continue;
                 }
                 
-                Util.readMsgFromSocket(client);
+                System.out.println(Util.readMsgFromSocket(client));
 
             }
             System.out.println("Client: logout");
