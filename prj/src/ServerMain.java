@@ -59,8 +59,12 @@ public class ServerMain {
         // Posts interaction
         ServerInternal.addComment(p.idPost, "consectetur adipisci", "u2");
         ServerInternal.addComment(p.idPost, "consectetur adipiscy", "u2");
-        ServerInternal.addComment(p.idPost, "consectetur adipisce", "u2");
+        ServerInternal.addComment(p.idPost, "consectetur adipisce", "u4");
         ServerInternal.rewinPost(p.idPost, "u3");
+
+        ServerInternal.rewardAlgorithm();
+        ServerInternal.rewardAlgorithm(); // this won't do anything, the modified post list has been confused
+        // ServerInternal.printWallets();
 
     }
 

@@ -15,7 +15,9 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import exceptions.ExistingUser;
 import exceptions.NotExistingPost;
@@ -28,6 +30,15 @@ public class ServerInternal {
     private static HashMap<String, User> users = new HashMap<>();
     private static HashMap<String, HashSet<User>> tagsUsers = new HashMap<>();
     private static HashMap<Integer, Post> posts = new HashMap<>();
+
+    // these are consumed by the reward algorithm
+    private static HashMap<Integer, HashSet<String>> newUpvotes = new HashMap<>();
+    private static HashMap<Integer, HashSet<String>> newDownvotes = new HashMap<>();
+    private static HashMap<Integer, ArrayList<String>> newComments = new HashMap<>();
+    // we don't care to save here the comments's content, we only care about the
+    // author
+
+    private static double authorPercentage = 0.7;
 
     // redundant who-is-following-who to avoid recalculating on every update
     // we need it to notify the logged users
@@ -252,7 +263,7 @@ public class ServerInternal {
      * 
      * @param idPost
      * @param username
-     * @return 0 success, 1 user is the post owner
+     * @return 0 success, 1 user is the post owner, 2 the post isn't in the user's feed
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -261,6 +272,8 @@ public class ServerInternal {
         Post p = checkPost(idPost);
         if (username.equals(p.owner))
             return 1;
+        if (!checkFeed(user, p))
+            return 2;
         user.blog.add(p.idPost);
         p.rewiners.add(username);
         return 0;
@@ -285,7 +298,8 @@ public class ServerInternal {
      * @param idPost
      * @param vote
      * @param username
-     * @return 0 success, 1 given post isn't in the user's feed, 2 user has already voted
+     * @return 0 success, 1 given post isn't in the user's feed, 2 user has already
+     *         voted
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -298,10 +312,17 @@ public class ServerInternal {
         // check if user has already voted
         if (p.upvote.contains(username) || p.downvote.contains(username))
             return 2;
-        if (vote >= 0)
+        if (vote >= 0) {
             p.upvote.add(username);
-        else
+            if (!ServerInternal.newUpvotes.containsKey(idPost))
+                ServerInternal.newUpvotes.put(idPost, new HashSet<String>());
+            ServerInternal.newUpvotes.get(idPost).add(username);
+        } else {
             p.downvote.add(username);
+            if (!ServerInternal.newDownvotes.containsKey(idPost))
+                ServerInternal.newDownvotes.put(idPost, new HashSet<String>());
+            ServerInternal.newDownvotes.get(idPost).add(username);
+        }
         return 0;
     };
 
@@ -325,6 +346,11 @@ public class ServerInternal {
         if (!p.comments.containsKey(username))
             p.comments.put(username, new HashSet<>());
         p.comments.get(username).add(comment);
+
+        // add comment to newComments
+        if (!ServerInternal.newComments.containsKey(idPost))
+            ServerInternal.newComments.put(idPost, new ArrayList<String>());
+        ServerInternal.newComments.get(idPost).add(username);
         return 0;
     };
     // TODO public static Transaction[] getWallet (){};
@@ -368,13 +394,6 @@ public class ServerInternal {
         private UserWrap(User u) {
             this.username = u.username;
             this.tags = u.tags.clone();
-            // System.out.print("------|||| ");
-            // for (String tag : this.tags) {
-            // System.out.print(tag);
-            // }
-            // System.out.println("");
-            // this.followers = (String[]) u.followers.toArray()/*.clone()*/;
-            // this.following = (String[]) u.following.toArray()/*.clone()*/;
             this.followers = new HashSet<String>(u.followers);
             this.following = new HashSet<String>(u.following);
         }
@@ -399,11 +418,10 @@ public class ServerInternal {
 
     }
 
-    private class User {
+    private class User implements Comparable<User> {
         final String username;
         final String password;
 
-        // ArrayList<Post> myownposts; // probab not needed
         HashSet<Integer> blog; // better to save post ID's or Post itself?
         // probab it is better to keep trace of the ID's, considering that a single post
         // may appear in more blogs. Secondarily,
@@ -414,7 +432,7 @@ public class ServerInternal {
         HashSet<String> followers;
         HashSet<String> following;
 
-        int wallet = 0;
+        double wallet = 0;
 
         String[] tags; // tags can't be modified
 
@@ -431,7 +449,6 @@ public class ServerInternal {
             for (String tag : this.tags) {
                 tagsUsers.putIfAbsent(tag, new HashSet<User>());
                 tagsUsers.get(tag).add(this);
-                // TODO is it okay to add to a set a not-yet-existing user? mmmmmmmh
             }
 
             this.followers = new HashSet<String>();
@@ -440,8 +457,6 @@ public class ServerInternal {
 
             ServerInternal.followers.put(this.username, new HashSet<String>());
         }
-
-        // The end user doesn't need to distinguish autor from curator rewards probab
 
         public int compareTo(User u) {
             return this.username.compareTo(u.username);
@@ -482,9 +497,10 @@ public class ServerInternal {
                 System.out.println("key :" + k);
                 this.comments.put(k, new HashSet<String>());
                 // this.comments.get(k).addAll(v);
-                v.forEach( (c) -> { 
+                v.forEach((c) -> {
                     System.out.println(c);
-                    this.comments.get(k).add( c); });
+                    this.comments.get(k).add(c);
+                });
             });
             this.date = (Timestamp) p.date.clone();
             this.title = new String(p.title);
@@ -510,7 +526,7 @@ public class ServerInternal {
 
     }
 
-    private class Post {
+    private class Post implements Comparable<Post> {
 
         final int idPost;
         final String owner;
@@ -560,5 +576,76 @@ public class ServerInternal {
         }
 
         // TODO reward
+        public int rewardAlgorithmIterations = 0;
+        public double reward = 0;
     };
+
+    public static void rewardAlgorithm() {
+        // get all the modified posts since the last time the algorithm got executed
+        // we will empty the three Collections once we're done evaluating
+        HashSet<Integer> modifiedPosts = new HashSet<>();
+        modifiedPosts.addAll(newUpvotes.keySet());
+        modifiedPosts.addAll(newDownvotes.keySet());
+        modifiedPosts.addAll(newComments.keySet());
+
+        modifiedPosts.forEach((id) -> {
+            // check if the post still exists
+            if (posts.containsKey(id)) {
+                // these will come in handy later
+                boolean anyUpvotes = newUpvotes.containsKey(id);
+                boolean anyDownvotes = newDownvotes.containsKey(id);
+                boolean anyComments = newComments.containsKey(id);
+
+                // get the number of upvotes and downvotes
+                int upvotes = anyUpvotes ? newUpvotes.get(id).size() : 0;
+                int downvotes = anyDownvotes ? newDownvotes.get(id).size() : 0;
+
+                // count duplicates and get the number of comments for each "commenting" user
+                HashMap<String, Integer> nCommentsForEachUser = (HashMap<String, Integer>) newComments.get(id).stream()
+                        .collect(Collectors.toMap(Function.identity(), v -> 1, Integer::sum));
+                // now apply the formula to each user and calculate the sum
+                var wrapper = new Object() {
+                    Double sum = 0.0;
+                };
+                nCommentsForEachUser.forEach((user, cp) -> {
+                    wrapper.sum += 2 / (1 + Math.pow(Math.E, -(cp - 1)));
+                });
+
+                Post post = posts.get(id);
+                post.rewardAlgorithmIterations++; // it is initialized to 0, so we increment before calculating
+                double reward = (Math.log(Math.max(upvotes - downvotes, 0) + 1) + Math.log(wrapper.sum + 1))
+                        / post.rewardAlgorithmIterations;
+                post.reward += reward; // TODO is this somehow useful ...? probab not
+
+                // AUTHOR REWARD
+                if (users.containsKey(post.owner))
+                    users.get(post.owner).wallet += reward * authorPercentage;
+
+                // CURATOR REWARD
+                HashSet<String> empty = new HashSet<String>(); // .flatMap handles null stream, but .of doesn't
+                // get all the users who interacted with the post
+                HashSet<String> curators = 
+                (HashSet<String>) Stream.of(anyUpvotes ? newUpvotes.get(id) : empty, anyDownvotes ? newDownvotes.get(id) : empty,
+                        anyComments ? new HashSet<String>(newComments.get(id)) : empty)
+                        .flatMap(u -> u.stream())
+                        .collect(Collectors.toSet());
+                        
+                        curators.forEach((username) -> {
+                            if (users.containsKey(username)) // we ain't sure whether the user still exists or not
+                                users.get(username).wallet += reward/curators.size() * (1 - authorPercentage); 
+                                // we must use curators.size to avoid counting duplicates
+                        });
+
+            }
+            modifiedPosts.remove(id); // delete the entry once evaluated
+            newUpvotes.remove(id);
+            newDownvotes.remove(id);
+            newComments.remove(id);
+        });
+    }
+
+    // TODO DEBUG stuff, remove later
+    public static void printWallets () {
+        users.values().forEach( (u) -> System.out.println(u.username + ": " + u.wallet));
+    }
 }
