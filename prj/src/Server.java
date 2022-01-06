@@ -1,17 +1,27 @@
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
+import java.net.SocketException;
+import java.net.UnknownHostException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.server.UnicastRemoteObject;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import exceptions.NotExistingPost;
@@ -19,21 +29,39 @@ import exceptions.NotExistingUser;
 
 class Server {
     private final int port;
+    private final int multicastPort;
+    private final String multicastString = "239.255.1.3";
+    private final long timeout = 1000;
+    private volatile boolean quit = false;
     public int activeConnections;
+    private ROSimp serverRMI = null;
     private HashMap<String, String> loggedUsers = new HashMap<>(); // (Remote) SocketAddress -> Username
 
     /**
      *
      * @param port
      */
-    public Server(int port) {
+    public Server(int port, int multicastPort) {
         this.port = port;
+        this.multicastPort = multicastPort;
     }
 
     /**
      * avvia l'esecuzione del server
      */
-    public void start() {
+    public void start() throws RemoteException {
+        // RMI setup
+        this.serverRMI = new ROSimp();
+        ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
+        LocateRegistry.createRegistry(1900);
+        LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
+        // Now ready to handle RMI registration and followers's update notifications
+
+        // start the reward periodic calculation
+        Thread rewardThread = new Thread(this.rewardThread());
+        rewardThread.start();
+
+        // TCP setup
         this.activeConnections = 0;
         try {
             // Server setup
@@ -74,15 +102,12 @@ class Server {
                         }
 
                         else if (key.isWritable()) { // WRITABLE
-                            this.sendResult(sel, key); // TODO write request result
+                            this.sendResult(sel, key);
                         }
-                    } catch (IOException e) { // if the client prematurely disconnects
-                        e.printStackTrace();
+                    } catch (IOException | BufferUnderflowException e) { // if the client prematurely disconnects
                         System.out.println(
-                                " |\tClient disconnected: " + ((SocketChannel) key.channel()).getRemoteAddress());
-                        // key.channel().close();
-                        // key.cancel();
-                        logoutHandler(key); // won't delete loggedUsers entry ? //TODO
+                                "CLIENT DISCONNECTED: " + ((SocketChannel) key.channel()).getRemoteAddress());
+                        logoutHandler(key);
                     }
                 }
             }
@@ -156,15 +181,13 @@ class Server {
         // if the client has disconnected c.getRemoteAddress returns null
         SocketChannel c = (SocketChannel) key.channel();
         SocketAddress cAddr = c.getRemoteAddress();
-        if (cAddr != null)
+        if (cAddr != null) // this seems always to be true
             loggedUsers.remove(cAddr.toString());
         key.channel().close();
         key.cancel();
     }
 
     private String parseRequest(String s, String k) {
-        // TODO logout gets recognized before calling parseRequest using EXIT_CMD (?)
-        // No...?
         // login
         String toRet = "";
         if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", s)) {
@@ -177,14 +200,10 @@ class Server {
                  */
                 loggedUsers.put(k, param[1]);
                 // System.out.println("user logged in: " + param[1] + " " + param[2]);
-                toRet = "-Successfully logged in";
+                toRet = "-Successfully logged in: " + multicastString  + " " +  multicastPort;
             } else
                 toRet = "Some error";
         }
-        // // logout
-        // else if (Pattern.matches("^logout\\s+\\S+\\s*$", s)) {
-        // logoutHandler(key);
-        // }
         // list users
         else {
             String u = loggedUsers.get(k);
@@ -196,7 +215,16 @@ class Server {
                 }
                 // list followers
                 else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
-                    toRet = userWrapSet2String(ServerInternal.listFollowers(u));
+                    // TODO the result sent through TCP isn't necessary, the client will get it by
+                    // itself
+                    // toRet = userWrapSet2String(ServerInternal.listFollowers(u));
+                    toRet = "";
+                    try {
+                        serverRMI.update(s);
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                        System.out.println("ERROR while updating followers list");
+                    }
                 }
                 // list following
                 else if (Pattern.matches("^list\\s+following\\s*$", s)) {
@@ -319,5 +347,43 @@ class Server {
             });
         });
         return wrapper.toRet;
+    }
+
+    private Runnable rewardThread() {
+        return () -> {
+            try (DatagramSocket skt = new DatagramSocket(this.multicastPort + 1)) {
+                while (!quit) {
+                    byte[] msg = "Rewards calculated".getBytes();
+                    try {
+                        DatagramPacket dtg = new DatagramPacket(msg, msg.length, InetAddress.getByName(multicastString),
+                                this.multicastPort);
+                        skt.send(dtg);
+                    } catch (UnknownHostException | SocketException e1) {
+                        System.out.println("|ERROR: multicast packet or socket");
+                        e1.printStackTrace();
+                    } catch (IOException e1) {
+                        System.out.println("|ERROR: multicast sending");
+                        e1.printStackTrace();
+                    }
+
+                    ServerInternal.rewardAlgorithm();
+                    try {
+                        Thread.sleep(this.timeout);
+                    } catch (InterruptedException e) {
+                        System.out.println("|ERROR: rewardThread");
+                        e.printStackTrace();
+                    }
+                }
+                if (skt != null)
+                    skt.close();
+            } catch (SocketException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        };
+    }
+
+    public String getMulticastAddressPort() {
+        return new String(multicastString + multicastPort);
     }
 }

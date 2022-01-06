@@ -18,4 +18,5 @@ public interface ROSint extends Remote {
     public void registerForCallback(ROCint cli) throws RemoteException;
 
     public void unregisterForCallback(ROCint cli) throws RemoteException;
+
 }

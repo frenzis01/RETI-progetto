@@ -48,19 +48,15 @@ public class ServerInternal {
         super();
     }
 
-    private void createStubUser() throws ExistingUser {
-        addUser("fakeusr", "stub", "tag1");
-    }
 
+    // Used in RMI interface implementation
     public static Boolean usernameUnavailable(String username) {
         return activeUsernames.contains(username);
-    };
-
+    }
     public static void addUser(String username, String password, String tags) throws ExistingUser {
         users.put(username, new ServerInternal().new User(username, password, tags));
         activeUsernames.add(username);
     }
-
     public static HashSet<String> getFollowers(String username) {
         return new HashSet<String>(users.get(username).followers);
     }
@@ -491,17 +487,7 @@ public class ServerInternal {
             this.upvote = p.upvote.size();
             this.downvote = p.downvote.size();
             this.content = new String(p.content);
-            // this.comments = new HashMap<>(p.comments); // TODO why doesnt this work :(
-            this.comments = new HashMap<String, HashSet<String>>();
-            p.comments.forEach((k, v) -> {
-                System.out.println("key :" + k);
-                this.comments.put(k, new HashSet<String>());
-                // this.comments.get(k).addAll(v);
-                v.forEach((c) -> {
-                    System.out.println(c);
-                    this.comments.get(k).add(c);
-                });
-            });
+            this.comments = new HashMap<>(p.comments);
             this.date = (Timestamp) p.date.clone();
             this.title = new String(p.title);
         }
@@ -554,8 +540,6 @@ public class ServerInternal {
 
             // This isn't automatically added to owner.posts
         }
-
-        // public int getId() {return idPost;};
 
         public int compareTo(Post p) {
             return p.idPost - this.idPost;
