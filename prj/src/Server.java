@@ -73,7 +73,7 @@ class Server {
             s_channel.register(sel, SelectionKey.OP_ACCEPT);
 
             // Server is running
-            System.out.printf("Server: waiting %d\n", this.port);
+            System.out.printf("\t...waiting %d\n", this.port);
             while (true) {
                 if (sel.select() == 0)
                     continue;
@@ -92,7 +92,7 @@ class Server {
                             SocketChannel c_channel = server.accept(); // non-blocking client channel
                             c_channel.configureBlocking(false);
                             System.out.println(
-                                    "Server: new connection from: " + c_channel.getRemoteAddress() +
+                                    "New connection from: " + c_channel.getRemoteAddress() +
                                             " | active clients: " + ++this.activeConnections);
 
                             // Server is going to read from this channel
@@ -129,17 +129,15 @@ class Server {
         SocketChannel c_channel = (SocketChannel) key.channel();
 
         String msg = Util.readMsgFromSocket(c_channel);
-        System.out.print("Server: ricevuto " + msg);
+        System.out.print("Received | Result => " + msg);
         String res = parseRequest(msg, c_channel.getRemoteAddress().toString());
-        System.out.println(" | " + res);
+        System.out.println(" |=> " + res);
         if (Pattern.matches("^logout\\s*$", msg)) { // client logged out
-            System.out.println("Server: logout from client " + c_channel.getRemoteAddress());
-            // c_channel.close();
-            // key.cancel();
+            System.out.println("client " + c_channel.getRemoteAddress());
             ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
             loggedUsers.remove(c_channel.getRemoteAddress().toString());
         } else {
-            String result = (res != null ? ("\n" + res) : "");
+            String result = (res != null && res != "" ? ("\n" + res) : "");
             ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
             length.putInt(result.length());
             length.flip();
@@ -168,8 +166,8 @@ class Server {
         toSend.clear();
 
         answer[0].flip();
-        System.out.println("Server: sent " + answer[0].getInt() + " bytes containing: "
-                + new String(toSend.array()).trim() + " || inviato al client " + c_channel.getRemoteAddress());
+        // System.out.println("Server: sent " + answer[0].getInt() + " bytes containing: "
+        //         + new String(toSend.array()).trim() + " || inviato al client " + c_channel.getRemoteAddress());
         if (toSend.hasRemaining()) {
             toSend.clear();
             c_channel.register(sel, SelectionKey.OP_READ);
@@ -216,7 +214,7 @@ class Server {
                 }
                 // list followers
                 else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
-                    // TODO the result sent through TCP isn't necessary, the client will get it by
+                    // the result sent through TCP isn't necessary, the client will get it by
                     // itself
                     // toRet = userWrapSet2String(ServerInternal.listFollowers(u));
                     toRet = "";
@@ -300,13 +298,11 @@ class Server {
                 }
                 // get wallet
                 else if (Pattern.matches("^wallet\\s*$", s)) {
-                    // TODO
-                    toRet = "Wallet not yet implemented";
+                    toRet = "" + ServerInternal.getWallet(u);
                 }
                 // get wallet bitcoin
                 else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {
-                    // TODO
-                    toRet = "Wallet not yet implemented";
+                    toRet = "" + ServerInternal.getWalletInBitcoin(u);
                 } else {
                     return toRet = "Unknown command: " + s; // no matches, show help ? //TODO
                 }
@@ -378,7 +374,6 @@ class Server {
                 if (skt != null)
                     skt.close();
             } catch (SocketException e) {
-                // TODO Auto-generated catch block
                 e.printStackTrace();
             }
         };

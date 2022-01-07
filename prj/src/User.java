@@ -12,12 +12,7 @@ class User implements Comparable<User>, Serializable {
     @Getter @Setter String username;
     @Getter @Setter String password;
 
-    @Getter @Setter HashSet<Integer> blog; // better to save post ID's or Post itself?
-    // probab it is better to keep trace of the ID's, considering that a single post
-    // may appear in more blogs. Secondarily,
-    // I can put all posts (with their content)
-    // in a single json file, without worrying to who belongs what
-
+    @Getter @Setter HashSet<Integer> blog; 
     // same thing for users
     @Getter @Setter HashSet<String> followers;
     @Getter @Setter HashSet<String> following;
@@ -26,13 +21,10 @@ class User implements Comparable<User>, Serializable {
 
     @Getter @Setter String[] tags; // tags can't be modified
 
-//    @JsonCreator
-//    public User() {
-//        super();
-//    }
+
 
     public User(String username, String password, String tags) throws ExistingUser {
-        if (ServerInternal.activeUsernames.contains(username))
+        if (ServerInternal.usernameUnavailable(username))
             throw new ExistingUser(); // this should already have been checked
 
         this.username = new String(username);
@@ -41,16 +33,16 @@ class User implements Comparable<User>, Serializable {
         this.tags = tags.split("\\s+");
         // I don't care to check that there aren't more than 5 tags here
         // It's not this constructor's responsibility to check it
-        for (String tag : this.tags) {
-            ServerInternal.tagsUsers.putIfAbsent(tag, new HashSet<String>());
-            ServerInternal.tagsUsers.get(tag).add(this.username);
-        }
+        for (String tag : this.tags) 
+            ServerInternal.add2tag(username, tag);
+        
 
         this.followers = new HashSet<String>();
         this.following = new HashSet<String>();
         this.blog = new HashSet<Integer>();
 
-        ServerInternal.followers.put(new String(this.username), new HashSet<String>());
+        // ServerInternal.followers.put(new String(this.username), new HashSet<String>());
+        // this is done by ServerInternal
     }
 
     public int compareTo(User u) {

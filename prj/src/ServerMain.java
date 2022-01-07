@@ -15,13 +15,6 @@ public class ServerMain {
     public static void main(String args[]) {
         try {
 
-            // // RMI setup
-            // ROSimp serverRMI = new ROSimp();
-            // ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
-            // LocateRegistry.createRegistry(1900);
-            // LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
-            // // Now ready to handle RMI registration and followers's update notifications
-
             // createStubs();
             ServerInternal.restoreBackup();
 

@@ -26,14 +26,9 @@ public class Post implements Comparable<Post>, Serializable {
     @Getter @Setter public int rewardAlgorithmIterations = 0;
     @Getter @Setter public double reward = 0;
 
-//    @JsonCreator
-//    public Post() {
-//        super();
-//    }
-
     // default constructor
     public Post(String title, String content, String owner) {
-        this.idPost = ServerInternal.idPostCounter++;
+        this.idPost = ServerInternal.getIdPostCounter();
         this.owner = new String(owner);
         this.title = new String(title);
         this.content = new String(content);
@@ -42,9 +37,9 @@ public class Post implements Comparable<Post>, Serializable {
         this.rewiners = new HashSet<>();
         this.upvote = new HashSet<>();
         this.downvote = new HashSet<>();
-        ServerInternal.posts.put(this.idPost, this);
-
-        // This isn't automatically added to owner.posts
+        
+        // ServerInternal.posts.put(this.idPost, this);
+        // This is done by createPost in serverInternal
     }
 
     public int compareTo(Post p) {

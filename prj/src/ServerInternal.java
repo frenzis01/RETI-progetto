@@ -1,4 +1,7 @@
 import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -20,24 +23,24 @@ import exceptions.NotExistingUser;
 
 public class ServerInternal {
 
-    public static int idPostCounter = 0; // i will write this in a json file
-    public static HashSet<String> activeUsernames = new HashSet<>();
-    public static HashMap<String, User> users = new HashMap<>();
-    public static HashMap<String, HashSet<String>> tagsUsers = new HashMap<>();
-    public static HashMap<Integer, Post> posts = new HashMap<>();
+    private static int idPostCounter = 0; // i will write this in a json file
+    private static HashSet<String> activeUsernames = new HashSet<>();
+    private static HashMap<String, User> users = new HashMap<>();
+    private static HashMap<String, HashSet<String>> tagsUsers = new HashMap<>();
+    private static HashMap<Integer, Post> posts = new HashMap<>();
 
     // these are consumed by the reward algorithm
-    public static HashMap<Integer, HashSet<String>> newUpvotes = new HashMap<>();
-    public static HashMap<Integer, HashSet<String>> newDownvotes = new HashMap<>();
-    public static HashMap<Integer, ArrayList<String>> newComments = new HashMap<>();
+    private static HashMap<Integer, HashSet<String>> newUpvotes = new HashMap<>();
+    private static HashMap<Integer, HashSet<String>> newDownvotes = new HashMap<>();
+    private static HashMap<Integer, ArrayList<String>> newComments = new HashMap<>();
     // we don't care to save here the comments's content, we only care about the
     // author
 
-    public static double authorPercentage = 0.7;
+    private static double authorPercentage = 0.7;
 
     // redundant who-is-following-who to avoid recalculating on every update
     // we need it to notify the logged users
-    public static HashMap<String, HashSet<String>> followers = new HashMap<>();
+    private static HashMap<String, HashSet<String>> followers = new HashMap<>();
 
     public ServerInternal() {
         super();
@@ -135,10 +138,9 @@ public class ServerInternal {
                 idPostCounter = mapper.readValue(idPostCounterReader, new TypeReference<Integer>() {
                 });
             }
-            
 
-            posts.forEach((k, v) -> System.out.println(k));
-            users.forEach((k, v) -> System.out.println(k));
+            // posts.forEach((k, v) -> System.out.println(k));
+            // users.forEach((k, v) -> System.out.println(k));
 
         } catch (IOException e) {
             System.out.println("|ERROR: restoreBackup");
@@ -146,19 +148,54 @@ public class ServerInternal {
         }
     }
 
-    // Used in RMI interface implementation
+
+
+    // Methods used in RMI interface implementation
+
     public static Boolean usernameUnavailable(String username) {
         return activeUsernames.contains(username);
     }
 
+    /**
+     * adds user to winsome
+     * @param username
+     * @param password
+     * @param tags
+     * @throws ExistingUser
+     */
     public static void addUser(String username, String password, String tags) throws ExistingUser {
         users.put(username, new User(username, password, tags));
         activeUsernames.add(username);
+        ServerInternal.followers.put(username, new HashSet<String>());
     }
 
+    /**
+     * 
+     * @param username
+     * @return username's followers (might be empty)
+     */
     public static HashSet<String> getFollowers(String username) {
-        return new HashSet<String>(users.get(username).followers);
+        return users.containsKey(username) ? new HashSet<String>(users.get(username).followers) : new HashSet<String>();
     }
+
+    // Methods needed by User constructor
+
+    /**
+     * Add user to a tag set
+     * @param username
+     * @param tag
+     */
+    public static void add2tag(String username, String tag) {
+        ServerInternal.tagsUsers.putIfAbsent(tag, new HashSet<String>());
+        ServerInternal.tagsUsers.get(tag).add(username);
+    }
+
+    public static int getIdPostCounter() {
+        return idPostCounter++;
+    }
+
+
+
 
     /**
      * @param username
@@ -316,6 +353,7 @@ public class ServerInternal {
         if (titolo == null || contenuto == null)
             throw new NullPointerException();
         Post newPost = new Post(titolo, contenuto, username);
+        posts.put(newPost.idPost, newPost);
         user.blog.add(newPost.idPost);
         return new ServerInternal().new PostWrap(newPost);
     }
@@ -433,13 +471,11 @@ public class ServerInternal {
             return 2;
         if (vote >= 0) {
             p.upvote.add(username);
-            if (!ServerInternal.newUpvotes.containsKey(idPost))
-                ServerInternal.newUpvotes.put(idPost, new HashSet<String>());
+            ServerInternal.newUpvotes.putIfAbsent(idPost, new HashSet<String>());
             ServerInternal.newUpvotes.get(idPost).add(username);
         } else {
             p.downvote.add(username);
-            if (!ServerInternal.newDownvotes.containsKey(idPost))
-                ServerInternal.newDownvotes.put(idPost, new HashSet<String>());
+            ServerInternal.newDownvotes.putIfAbsent(idPost, new HashSet<String>());
             ServerInternal.newDownvotes.get(idPost).add(username);
         }
         return 0;
@@ -464,21 +500,63 @@ public class ServerInternal {
         Post p = checkPost(idPost);
         if (!checkFeed(user, p))
             return 1;
-        if (!p.comments.containsKey(username))
-            p.comments.put(username, new HashSet<>());
+        p.comments.putIfAbsent(username, new HashSet<>());
         p.comments.get(username).add(comment);
 
         // add comment to newComments
-        if (!ServerInternal.newComments.containsKey(idPost))
-            ServerInternal.newComments.put(idPost, new ArrayList<String>());
+        ServerInternal.newComments.putIfAbsent(idPost, new ArrayList<String>());
         ServerInternal.newComments.get(idPost).add(username);
         return 0;
     }
 
-    ;
-    // TODO public static Transaction[] getWallet (){};
-    // TODO public static Transaction[] getWalletInBitcoin (){};
+    
+    public static double getWallet (String username){
+        User u = users.get(username);
+        return u != null ? u.wallet : 0.0;
+    };
 
+    public static double getWalletInBitcoin (String username){
+        double toRet = getWallet(username);
+        if (toRet != 0.0){
+
+            try {
+                URL url = new URL("https://www.random.org/decimal-fractions/?num=1&dec=10&col=1&format=plain&rnd=new");
+                HttpURLConnection con = (HttpURLConnection) url.openConnection();
+                con.setRequestMethod("GET");
+                
+                if (con.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(con.getInputStream()));
+                    
+                    String inputLine = "";
+                    StringBuffer res = new StringBuffer();
+                    
+                    while ((inputLine = reader.readLine()) != null) {
+                        res.append(inputLine);
+                    }
+                    reader.close();
+                    
+                    toRet *= Double.parseDouble(res.toString());
+                }
+            } catch (Exception e) {
+                toRet = -1.0;
+                System.out.println("|ERROR connecting to random.org");
+                e.printStackTrace();
+            }
+        }
+        return toRet;
+    };
+
+
+
+
+    // private utilities
+
+    /**
+     * Check's whether the given username is associated with a winsome user
+     * @param username
+     * @return
+     * @throws NotExistingUser
+     */
     private static User checkUsername(String username) throws NotExistingUser {
         if (username == null)
             throw new NullPointerException();
@@ -488,7 +566,7 @@ public class ServerInternal {
     }
 
     /**
-     * check's if post exists
+     * check's if post exists in winsome
      */
     private static Post checkPost(int idPost) throws NotExistingPost {
         if (!posts.containsKey(idPost))
