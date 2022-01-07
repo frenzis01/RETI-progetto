@@ -107,7 +107,7 @@ class Server {
                     } catch (IOException | BufferUnderflowException e) { // if the client prematurely disconnects
                         System.out.println(
                                 "CLIENT DISCONNECTED: " + ((SocketChannel) key.channel()).getRemoteAddress());
-                        logoutHandler(key);
+                        clientExitHandler(key);
                     }
                 }
             }
@@ -131,12 +131,12 @@ class Server {
         System.out.print("Server: ricevuto " + msg);
         String res = parseRequest(msg, c_channel.getRemoteAddress().toString());
         System.out.println(" | " + res);
-        if (Pattern.matches("^logout\\s+\\S+\\s*$", msg)) { // client logged out
+        if (Pattern.matches("^logout\\s*$", msg)) { // client logged out
             System.out.println("Server: logout from client " + c_channel.getRemoteAddress());
             // c_channel.close();
             // key.cancel();
             ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
-            logoutHandler(key);
+            loggedUsers.remove(c_channel.getRemoteAddress().toString());
         } else {
             String result = (res != null ? ("\n" + res) : "");
             ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
@@ -177,7 +177,7 @@ class Server {
 
     }
 
-    private void logoutHandler(SelectionKey key) throws IOException {
+    private void clientExitHandler(SelectionKey key) throws IOException {
         // if the client has disconnected c.getRemoteAddress returns null
         SocketChannel c = (SocketChannel) key.channel();
         SocketAddress cAddr = c.getRemoteAddress();
