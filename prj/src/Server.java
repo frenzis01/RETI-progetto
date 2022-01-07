@@ -1,3 +1,4 @@
+import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -31,7 +32,7 @@ class Server {
     private final int port;
     private final int multicastPort;
     private final String multicastString = "239.255.1.3";
-    private final long timeout = 1000;
+    private final long timeout = 10000;
     private volatile boolean quit = false;
     public int activeConnections;
     private ROSimp serverRMI = null;

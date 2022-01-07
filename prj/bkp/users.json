@@ -1,0 +1,47 @@
+{
+  "u5" : {
+    "username" : "u5",
+    "password" : "",
+    "blog" : [ ],
+    "followers" : [ ],
+    "following" : [ "u1" ],
+    "wallet" : 0.0,
+    "tags" : [ "tag5", "tag6" ]
+  },
+  "u1" : {
+    "username" : "u1",
+    "password" : "",
+    "blog" : [ 0, 1 ],
+    "followers" : [ "u5", "u2", "u4" ],
+    "following" : [ "u2", "u3" ],
+    "wallet" : 0.8693162079699814,
+    "tags" : [ "tag1", "tag2" ]
+  },
+  "u2" : {
+    "username" : "u2",
+    "password" : "",
+    "blog" : [ ],
+    "followers" : [ "u1" ],
+    "following" : [ "u1" ],
+    "wallet" : 0.18628204456499606,
+    "tags" : [ "tag1", "tag2" ]
+  },
+  "u3" : {
+    "username" : "u3",
+    "password" : "",
+    "blog" : [ ],
+    "followers" : [ "u1" ],
+    "following" : [ ],
+    "wallet" : 0.0,
+    "tags" : [ "tag3" ]
+  },
+  "u4" : {
+    "username" : "u4",
+    "password" : "4",
+    "blog" : [ ],
+    "followers" : [ ],
+    "following" : [ "u1" ],
+    "wallet" : 0.18628204456499606,
+    "tags" : [ "tag4" ]
+  }
+}

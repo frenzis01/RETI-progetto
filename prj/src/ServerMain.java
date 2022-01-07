@@ -22,34 +22,32 @@ public class ServerMain {
             // LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
             // // Now ready to handle RMI registration and followers's update notifications
 
-
-            createStubs();
+            // createStubs();
+            ServerInternal.restoreBackup();
 
             // TCP server setup
-            Server server = new Server(12345,6789);
+            Server server = new Server(12345, 6789);
             server.start();
 
             // while(true) {
             // Thread.sleep(800);
             // server.update("");
             // }
-        } 
-        catch (RemoteException e) {
+        } catch (RemoteException e) {
             System.out.println("ERROR while setting up RMI");
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-    private static void createStubs() throws NotExistingPost,NotExistingUser,ExistingUser {
+    private static void createStubs() throws NotExistingPost, NotExistingUser, ExistingUser {
         // Add some users
         ServerInternal.addUser("u1", "", "tag1 tag2");
         ServerInternal.addUser("u2", "", "tag1 tag2");
         ServerInternal.addUser("u3", "", "tag3");
-        ServerInternal.addUser("u4", "", "tag4");
+        ServerInternal.addUser("u4", "4", "tag4");
         ServerInternal.addUser("u5", "", "tag5 tag6");
-        
+
         // Add some relationships between users
         ServerInternal.followUser("u2", "u1");
         ServerInternal.followUser("u1", "u2");
@@ -70,6 +68,8 @@ public class ServerMain {
         ServerInternal.rewardAlgorithm();
         ServerInternal.rewardAlgorithm(); // this won't do anything, the modified post list has been confused
         // ServerInternal.printWallets();
+
+        ServerInternal.write2json();
 
     }
 

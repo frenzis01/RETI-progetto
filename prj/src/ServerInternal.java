@@ -1,23 +1,18 @@
-import java.nio.channels.*;
-import java.net.InetSocketAddress;
-import java.nio.*;
-import java.rmi.*;
-import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.*;
-import java.rmi.server.UnicastRemoteObject;
+import java.io.*;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.*;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.*;
+import lombok.*;
 
 import exceptions.ExistingUser;
 import exceptions.NotExistingPost;
@@ -25,44 +20,147 @@ import exceptions.NotExistingUser;
 
 public class ServerInternal {
 
-    private static int idPostCounter = 0; // i will write this in a json file
-    private static HashSet<String> activeUsernames = new HashSet<>();
-    private static HashMap<String, User> users = new HashMap<>();
-    private static HashMap<String, HashSet<User>> tagsUsers = new HashMap<>();
-    private static HashMap<Integer, Post> posts = new HashMap<>();
+    public static int idPostCounter = 0; // i will write this in a json file
+    public static HashSet<String> activeUsernames = new HashSet<>();
+    public static HashMap<String, User> users = new HashMap<>();
+    public static HashMap<String, HashSet<String>> tagsUsers = new HashMap<>();
+    public static HashMap<Integer, Post> posts = new HashMap<>();
 
     // these are consumed by the reward algorithm
-    private static HashMap<Integer, HashSet<String>> newUpvotes = new HashMap<>();
-    private static HashMap<Integer, HashSet<String>> newDownvotes = new HashMap<>();
-    private static HashMap<Integer, ArrayList<String>> newComments = new HashMap<>();
+    public static HashMap<Integer, HashSet<String>> newUpvotes = new HashMap<>();
+    public static HashMap<Integer, HashSet<String>> newDownvotes = new HashMap<>();
+    public static HashMap<Integer, ArrayList<String>> newComments = new HashMap<>();
     // we don't care to save here the comments's content, we only care about the
     // author
 
-    private static double authorPercentage = 0.7;
+    public static double authorPercentage = 0.7;
 
     // redundant who-is-following-who to avoid recalculating on every update
     // we need it to notify the logged users
-    private static HashMap<String, HashSet<String>> followers = new HashMap<>();
+    public static HashMap<String, HashSet<String>> followers = new HashMap<>();
 
     public ServerInternal() {
         super();
     }
 
+    private static File usersBackup = new File("../bkp/users.json");
+    private static File postsBackup = new File("../bkp/posts.json");
+    private static File followersBackup = new File("../bkp/followers.json");
+    private static File tagsUsersBackup = new File("../bkp/tagsUsers.json");
+    private static File activeUsernamesBackup = new File("../bkp/activeUsernames.json");
+    private static File idPostCounterBackup = new File("../bkp/idPostCounter.json"); // this is a bit overkill :) //TODO
+
+    public static void write2json() {
+        try {
+            if (!usersBackup.exists())
+                usersBackup.createNewFile();
+            if (!postsBackup.exists())
+                postsBackup.createNewFile();
+            if (!followersBackup.exists())
+                followersBackup.createNewFile();
+            if (!tagsUsersBackup.exists())
+                tagsUsersBackup.createNewFile();
+            if (!activeUsernamesBackup.exists())
+                activeUsernamesBackup.createNewFile();
+            if (!idPostCounterBackup.exists())
+                idPostCounterBackup.createNewFile();
+
+        } catch (IOException e) {
+            System.out.println("|ERROR: creating backup files");
+            e.printStackTrace();
+        }
+
+        JsonFactory jsonFactory = new JsonFactory();
+        ObjectMapper mapper = new ObjectMapper(jsonFactory);
+        mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        try {
+            if (users.size() > 0) {
+                mapper.writeValue(usersBackup, users);
+                System.out.println("backup utenti effettuato");
+            }
+            if (posts.size() > 0) {
+                mapper.writeValue(postsBackup, posts);
+                System.out.println("backup post effettuato");
+            }
+            if (followers.size() > 0) {
+                mapper.writeValue(followersBackup, followers);
+                System.out.println("backup followers effettuato");
+            }
+            if (tagsUsers.size() > 0) {
+                mapper.writeValue(tagsUsersBackup, tagsUsers);
+                System.out.println("backup tagsUsers effettuato");
+            }
+            if (activeUsernames.size() > 0) {
+                mapper.writeValue(activeUsernamesBackup, activeUsernames);
+                System.out.println("backup activeUsernames effettuato");
+            }
+            mapper.writeValue(idPostCounterBackup, idPostCounter);
+            System.out.println("backup idPost effettuato");
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void restoreBackup() {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            if (usersBackup.exists()) {
+                BufferedReader usersReader = new BufferedReader(new FileReader(usersBackup));
+                users = mapper.readValue(usersReader, new TypeReference<HashMap<String, User>>() {
+                });
+            }
+            if (postsBackup.exists()) {
+                BufferedReader postsReader = new BufferedReader(new FileReader(postsBackup));
+                posts = mapper.readValue(postsReader, new TypeReference<HashMap<Integer, Post>>() {
+                });
+            }
+            if (followersBackup.exists()) {
+                BufferedReader followersReader = new BufferedReader(new FileReader(followersBackup));
+                followers = mapper.readValue(followersReader, new TypeReference<HashMap<String, HashSet<String>>>() {
+                });
+            }
+            if (tagsUsersBackup.exists()) {
+                BufferedReader tagsUsersReader = new BufferedReader(new FileReader(tagsUsersBackup));
+                tagsUsers = mapper.readValue(tagsUsersReader, new TypeReference<HashMap<String, HashSet<String>>>() {
+                });
+            }
+            if (activeUsernamesBackup.exists()) {
+                BufferedReader activeUsernamesReader = new BufferedReader(new FileReader(activeUsernamesBackup));
+                activeUsernames = mapper.readValue(activeUsernamesReader, new TypeReference<HashSet<String>>() {
+                });
+            }
+            if (idPostCounterBackup.exists()) {
+                BufferedReader idPostCounterReader = new BufferedReader(new FileReader(idPostCounterBackup));
+                idPostCounter = mapper.readValue(idPostCounterReader, new TypeReference<Integer>() {
+                });
+            }
+            
+
+            posts.forEach((k, v) -> System.out.println(k));
+            users.forEach((k, v) -> System.out.println(k));
+
+        } catch (IOException e) {
+            System.out.println("|ERROR: restoreBackup");
+            e.printStackTrace();
+        }
+    }
 
     // Used in RMI interface implementation
     public static Boolean usernameUnavailable(String username) {
         return activeUsernames.contains(username);
     }
+
     public static void addUser(String username, String password, String tags) throws ExistingUser {
-        users.put(username, new ServerInternal().new User(username, password, tags));
+        users.put(username, new User(username, password, tags));
         activeUsernames.add(username);
     }
+
     public static HashSet<String> getFollowers(String username) {
         return new HashSet<String>(users.get(username).followers);
     }
 
     /**
-     * 
      * @param username
      * @param password
      * @return 0 success, 1 login failed
@@ -74,23 +172,25 @@ public class ServerInternal {
         if (users.containsKey(username) && users.get(username).password.equals(password))
             return 0;
         return 1;
-    };
+    }
+
+    ;
 
     /**
-     * 
      * Does this have any sense at all ?
      * //TODO
-     * 
+     *
      * @param username
      */
     public static void logout(String username) {
         if (username == null)
             throw new NullPointerException();
 
-    };
+    }
+
+    ;
 
     /**
-     * 
      * @param username
      * @return the set of users who have at least on tag in common with the
      *         requestor
@@ -100,15 +200,21 @@ public class ServerInternal {
         User user = checkUsername(username);
         HashSet<UserWrap> toRet = new HashSet<>();
         for (String tag : user.tags) {
-            tagsUsers.get(tag).forEach((u) -> {
-                if (!u.username.equals(username)) {
-                    toRet.add(new ServerInternal().new UserWrap(u)); // TODO okay to instantiate ServerInternal like
-                                                                     // this?
-                }
-            });
+            tagsUsers.get(tag)
+                    .forEach((u) -> {
+                        System.out.println(u);
+                        if (!u.equals(username)) {
+                            toRet.add(new ServerInternal().new UserWrap(users.get(u))); // TODO okay to instantiate
+                                                                                        // ServerInternal
+                            // like
+                            // this?
+                        }
+                    });
         }
         return toRet;
-    };
+    }
+
+    ;
 
     /**
      * @param username
@@ -121,7 +227,9 @@ public class ServerInternal {
         for (String follower : user.followers)
             toRet.add(new ServerInternal().new UserWrap(users.get(follower)));
         return toRet;
-    };
+    }
+
+    ;
 
     /**
      * @param username
@@ -134,11 +242,13 @@ public class ServerInternal {
         for (String followed : user.following)
             toRet.add(new ServerInternal().new UserWrap(users.get(followed)));
         return toRet;
-    };
+    }
+
+    ;
 
     /**
      * Removes a user from the requestor set of followed users
-     * 
+     *
      * @param toFollow
      * @param username
      * @return
@@ -151,11 +261,13 @@ public class ServerInternal {
         followed.followers.add(username);
         ServerInternal.followers.get(toFollow).add(username);
         return 0;
-    };
+    }
+
+    ;
 
     /**
      * Removes a user from the requestor set of followed users
-     * 
+     *
      * @param toUnfollow
      * @param username
      * @return
@@ -170,7 +282,9 @@ public class ServerInternal {
         // TODO should I report an error in case of "already not following"? Don't think
         // so
         return 0;
-    };
+    }
+
+    ;
 
     /**
      * @param username
@@ -184,11 +298,13 @@ public class ServerInternal {
             toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
         }
         return toRet;
-    }; // displays the logged user's blog, no username param needed
+    }
+
+    ; // displays the logged user's blog, no username param needed
 
     /**
      * add a Post to the client's blog
-     * 
+     *
      * @param titolo
      * @param contenuto
      * @param username
@@ -199,10 +315,12 @@ public class ServerInternal {
         User user = checkUsername(username);
         if (titolo == null || contenuto == null)
             throw new NullPointerException();
-        Post newPost = new ServerInternal().new Post(titolo, contenuto, username);
+        Post newPost = new Post(titolo, contenuto, username);
         user.blog.add(newPost.idPost);
         return new ServerInternal().new PostWrap(newPost);
-    };
+    }
+
+    ;
 
     /**
      * @param username
@@ -222,11 +340,13 @@ public class ServerInternal {
             });
         }
         return toRet;
-    };
+    }
+
+    ;
 
     /**
      * Remove a post from winsome
-     * 
+     *
      * @param idPost
      * @param username
      * @return 0 success, 1 user isn't the post owner
@@ -252,14 +372,17 @@ public class ServerInternal {
             return 0;
         }
         return 1; // the client isn't the owner
-    };
+    }
+
+    ;
 
     /**
      * rewin a Post made by another user. A client cannot rewin its own posts
-     * 
+     *
      * @param idPost
      * @param username
-     * @return 0 success, 1 user is the post owner, 2 the post isn't in the user's feed
+     * @return 0 success, 1 user is the post owner, 2 the post isn't in the user's
+     *         feed
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -273,10 +396,11 @@ public class ServerInternal {
         user.blog.add(p.idPost);
         p.rewiners.add(username);
         return 0;
-    };
+    }
+
+    ;
 
     /**
-     * 
      * @param idPost
      * @param username
      * @return
@@ -290,7 +414,6 @@ public class ServerInternal {
     }
 
     /**
-     * 
      * @param idPost
      * @param vote
      * @param username
@@ -320,13 +443,15 @@ public class ServerInternal {
             ServerInternal.newDownvotes.get(idPost).add(username);
         }
         return 0;
-    };
+    }
+
+    ;
 
     /**
      * add comment to a Post, a user can add more than one comment to a single post.
      * A user can comment a Post
      * only if it is in its feed
-     * 
+     *
      * @param idPost
      * @param comment
      * @param username
@@ -348,7 +473,9 @@ public class ServerInternal {
             ServerInternal.newComments.put(idPost, new ArrayList<String>());
         ServerInternal.newComments.get(idPost).add(username);
         return 0;
-    };
+    }
+
+    ;
     // TODO public static Transaction[] getWallet (){};
     // TODO public static Transaction[] getWalletInBitcoin (){};
 
@@ -371,7 +498,7 @@ public class ServerInternal {
 
     /**
      * Check if a Post 'p' is in 'user' 's feed
-     * 
+     *
      * @param user
      * @param p
      * @return
@@ -414,65 +541,7 @@ public class ServerInternal {
 
     }
 
-    private class User implements Comparable<User> {
-        final String username;
-        final String password;
-
-        HashSet<Integer> blog; // better to save post ID's or Post itself?
-        // probab it is better to keep trace of the ID's, considering that a single post
-        // may appear in more blogs. Secondarily,
-        // I can put all posts (with their content)
-        // in a single json file, without worrying to who belongs what
-
-        // same thing for users
-        HashSet<String> followers;
-        HashSet<String> following;
-
-        double wallet = 0;
-
-        String[] tags; // tags can't be modified
-
-        public User(String username, String password, String tags) throws ExistingUser {
-            if (activeUsernames.contains(username))
-                throw new ExistingUser(); // this should already have been checked
-
-            this.username = new String(username);
-            this.password = new String(password);
-            tags.toLowerCase();
-            this.tags = tags.split("\\s+");
-            // I don't care to check that there aren't more than 5 tags here
-            // It's not this constructor's responsibility to check it
-            for (String tag : this.tags) {
-                tagsUsers.putIfAbsent(tag, new HashSet<User>());
-                tagsUsers.get(tag).add(this);
-            }
-
-            this.followers = new HashSet<String>();
-            this.following = new HashSet<String>();
-            this.blog = new HashSet<Integer>();
-
-            ServerInternal.followers.put(this.username, new HashSet<String>());
-        }
-
-        public int compareTo(User u) {
-            return this.username.compareTo(u.username);
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (!(o instanceof User))
-                return false;
-            if (((User) o).username.equals(this.username))
-                return true;
-            return false;
-        }
-
-        @Override
-        public int hashCode() {
-            return this.username.hashCode();
-        }
-
-    };
+    ;
 
     public class PostWrap implements Comparable<PostWrap> {
         final String owner;
@@ -512,57 +581,7 @@ public class ServerInternal {
 
     }
 
-    private class Post implements Comparable<Post> {
-
-        final int idPost;
-        final String owner;
-        final String title;
-        final String content;
-        final Timestamp date;
-        HashSet<String> upvote;
-        HashSet<String> downvote;
-        HashMap<String, HashSet<String>> comments;
-        HashSet<String> rewiners;
-        // useful to check if a post should appear in someone's feed
-
-        // default constructor
-        public Post(String title, String content, String owner) {
-            this.idPost = idPostCounter++;
-            this.owner = new String(owner);
-            this.title = new String(title);
-            this.content = new String(content);
-            this.date = new Timestamp(System.currentTimeMillis());
-            this.comments = new HashMap<>();
-            this.rewiners = new HashSet<>();
-            this.upvote = new HashSet<>();
-            this.downvote = new HashSet<>();
-            posts.put(this.idPost, this);
-
-            // This isn't automatically added to owner.posts
-        }
-
-        public int compareTo(Post p) {
-            return p.idPost - this.idPost;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (!(o instanceof Post))
-                return false;
-            if (((Post) o).idPost == this.idPost)
-                return true;
-            return false;
-        }
-
-        @Override
-        public int hashCode() {
-            return Integer.hashCode(this.idPost);
-        }
-
-        // TODO reward
-        public int rewardAlgorithmIterations = 0;
-        public double reward = 0;
-    };
+    ;
 
     public static void rewardAlgorithm() {
         // get all the modified posts since the last time the algorithm got executed
@@ -608,17 +627,17 @@ public class ServerInternal {
                 // CURATOR REWARD
                 HashSet<String> empty = new HashSet<String>(); // .flatMap handles null stream, but .of doesn't
                 // get all the users who interacted with the post
-                HashSet<String> curators = 
-                (HashSet<String>) Stream.of(anyUpvotes ? newUpvotes.get(id) : empty, anyDownvotes ? newDownvotes.get(id) : empty,
-                        anyComments ? new HashSet<String>(newComments.get(id)) : empty)
+                HashSet<String> curators = (HashSet<String>) Stream
+                        .of(anyUpvotes ? newUpvotes.get(id) : empty, anyDownvotes ? newDownvotes.get(id) : empty,
+                                anyComments ? new HashSet<String>(newComments.get(id)) : empty)
                         .flatMap(u -> u.stream())
                         .collect(Collectors.toSet());
-                        
-                        curators.forEach((username) -> {
-                            if (users.containsKey(username)) // we ain't sure whether the user still exists or not
-                                users.get(username).wallet += reward/curators.size() * (1 - authorPercentage); 
-                                // we must use curators.size to avoid counting duplicates
-                        });
+
+                curators.forEach((username) -> {
+                    if (users.containsKey(username)) // we ain't sure whether the user still exists or not
+                        users.get(username).wallet += reward / curators.size() * (1 - authorPercentage);
+                    // we must use curators.size to avoid counting duplicates
+                });
 
             }
             modifiedPosts.remove(id); // delete the entry once evaluated
@@ -629,7 +648,7 @@ public class ServerInternal {
     }
 
     // TODO DEBUG stuff, remove later
-    public static void printWallets () {
-        users.values().forEach( (u) -> System.out.println(u.username + ": " + u.wallet));
+    public static void printWallets() {
+        users.values().forEach((u) -> System.out.println(u.username + ": " + u.wallet));
     }
 }

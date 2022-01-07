@@ -9,6 +9,7 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.rmi.AccessException;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -24,7 +25,7 @@ public class Client {
     private volatile boolean exit;
     private volatile boolean logged = false;
     private ROSint server;
-    private ROCint stub;
+    private ROCint stub = null;
 
     /**
      * Default constructor
@@ -40,33 +41,8 @@ public class Client {
         try {
             // RMI
             this.server = (ROSint) LocateRegistry.getRegistry(1900).lookup("rmi://127.0.0.1:1900");
-    
-            BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
-            String registrationMsg = consoleReader.readLine().trim();
-            while (Pattern.matches("^register\\s+\\S+\\s+\\S+\\s+.*\\s*$", registrationMsg) == false){
-                System.out.println("Input error. Usage:\t register <username> <password> <space_separated_tags>");
-                registrationMsg = consoleReader.readLine().trim();
-            }
-            String[] param = registrationMsg.split("\\s+", 4);
-            System.out.println(this.server.register(param[1], param[2], param.length == 4 ? param[3] : ""));
-    
-    
-            stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(new String("username")), 0);
-            this.server.registerForCallback(stub);
-        }
-        catch (NotBoundException e) {
-            System.out.println("Could not locate registry");
-        }
-        catch (IOException e){
-            System.out.println("Input buffer error");
-        } 
-        catch (ExistingUser e){
-            System.out.println("Could not register, already taken username");
-        }
-
-
-
-
+        } catch (NotBoundException | RemoteException e) {
+            System.out.println("Could not locate registry");}
 
         Thread sniffer = null;
 
@@ -81,6 +57,15 @@ public class Client {
                 // get new request from commandline
                 String msg = consoleReader.readLine().trim();
 
+                if (Pattern.matches("^register\\s+\\S+\\s+\\S+\\s+.*\\s*$", msg)) {
+                    String[] param = msg.split("\\s+", 4);
+                    try {
+                        System.out.println(this.server.register(param[1], param[2], param.length == 4 ? param[3] : ""));
+                    } catch (ExistingUser e) {
+                        System.out.println("Cannot register: username already taken");
+                    }
+                    continue;
+                }
                 // we'll write first the length of the request
                 ByteBuffer request = ByteBuffer.allocate(Integer.BYTES + msg.getBytes().length);
                 request.putInt(msg.length()); // add request length before the request itself
@@ -99,12 +84,15 @@ public class Client {
                     this.exit = true;
                     continue;
                 }
-                if (logged && Pattern.matches("^logout\\s*$", msg)) {
-                    sniffer.interrupt();
-                    server.unregisterForCallback(stub);
-                    System.out.println("Logged out");
+                if (Pattern.matches("^logout\\s*$", msg)) {
+                    if (logged){
+                        sniffer.interrupt();
+                        server.unregisterForCallback(stub);
+                        System.out.println("Logged out");
+                    }
                     continue;
                 }
+                
 
                 String response = Util.readMsgFromSocket(client);
                 System.out.println(response);
@@ -115,11 +103,15 @@ public class Client {
                     String[] param = response.split("\\s+");
                     sniffer = new Thread(snifferThread(param[3], param[4]));
                     sniffer.start();
+
+                    stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(new String("username")), 0);
+                    this.server.registerForCallback(stub);
                 }
 
             }
             System.out.println("Client: logout");
-        } catch (IOException e) {
+        }
+         catch (IOException e) {
             e.printStackTrace();
         }
     }
