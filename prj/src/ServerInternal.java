@@ -1,12 +1,15 @@
 import java.io.*;
+import java.lang.reflect.Array;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -23,16 +26,15 @@ import exceptions.NotExistingUser;
 
 public class ServerInternal {
 
-    private static int idPostCounter = 0; // i will write this in a json file
-    private static HashSet<String> activeUsernames = new HashSet<>();
-    private static HashMap<String, User> users = new HashMap<>();
-    private static HashMap<String, HashSet<String>> tagsUsers = new HashMap<>();
-    private static HashMap<Integer, Post> posts = new HashMap<>();
+    private static volatile int idPostCounter = 0; // i will write this in a json file
+    private static ConcurrentHashMap<String, User> users = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<String, HashSet<String>> tagsUsers = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<Integer, Post> posts = new ConcurrentHashMap<>();
 
     // these are consumed by the reward algorithm
-    private static HashMap<Integer, HashSet<String>> newUpvotes = new HashMap<>();
-    private static HashMap<Integer, HashSet<String>> newDownvotes = new HashMap<>();
-    private static HashMap<Integer, ArrayList<String>> newComments = new HashMap<>();
+    private static ConcurrentHashMap<Integer, HashSet<String>> newUpvotes = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<Integer, HashSet<String>> newDownvotes = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<Integer, ArrayList<String>> newComments = new ConcurrentHashMap<>();
     // we don't care to save here the comments's content, we only care about the
     // author
 
@@ -40,7 +42,7 @@ public class ServerInternal {
 
     // redundant who-is-following-who to avoid recalculating on every update
     // we need it to notify the logged users
-    private static HashMap<String, HashSet<String>> followers = new HashMap<>();
+    private static ConcurrentHashMap<String, HashSet<String>> followers = new ConcurrentHashMap<>();
 
     public ServerInternal() {
         super();
@@ -50,59 +52,40 @@ public class ServerInternal {
     private static File postsBackup = new File("../bkp/posts.json");
     private static File followersBackup = new File("../bkp/followers.json");
     private static File tagsUsersBackup = new File("../bkp/tagsUsers.json");
-    private static File activeUsernamesBackup = new File("../bkp/activeUsernames.json");
     private static File idPostCounterBackup = new File("../bkp/idPostCounter.json"); // this is a bit overkill :) //TODO
 
     public static void write2json() {
-        try {
-            if (!usersBackup.exists())
-                usersBackup.createNewFile();
-            if (!postsBackup.exists())
-                postsBackup.createNewFile();
-            if (!followersBackup.exists())
-                followersBackup.createNewFile();
-            if (!tagsUsersBackup.exists())
-                tagsUsersBackup.createNewFile();
-            if (!activeUsernamesBackup.exists())
-                activeUsernamesBackup.createNewFile();
-            if (!idPostCounterBackup.exists())
-                idPostCounterBackup.createNewFile();
-
-        } catch (IOException e) {
-            System.out.println("|ERROR: creating backup files");
-            e.printStackTrace();
-        }
+        createBackupFiles();
 
         JsonFactory jsonFactory = new JsonFactory();
         ObjectMapper mapper = new ObjectMapper(jsonFactory);
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
         try {
-            if (users.size() > 0) {
-                mapper.writeValue(usersBackup, users);
-                System.out.println("backup utenti effettuato");
-            }
-            if (posts.size() > 0) {
-                mapper.writeValue(postsBackup, posts);
-                System.out.println("backup post effettuato");
-            }
-            if (followers.size() > 0) {
-                mapper.writeValue(followersBackup, followers);
-                System.out.println("backup followers effettuato");
-            }
-            if (tagsUsers.size() > 0) {
-                mapper.writeValue(tagsUsersBackup, tagsUsers);
-                System.out.println("backup tagsUsers effettuato");
-            }
-            if (activeUsernames.size() > 0) {
-                mapper.writeValue(activeUsernamesBackup, activeUsernames);
-                System.out.println("backup activeUsernames effettuato");
-            }
+            mapper.writeValue(usersBackup, users);
+            mapper.writeValue(postsBackup, posts);
+            mapper.writeValue(followersBackup, followers);
+            mapper.writeValue(tagsUsersBackup, tagsUsers);
             mapper.writeValue(idPostCounterBackup, idPostCounter);
-            System.out.println("backup idPost effettuato");
-
+            // mapper.writeValue(usersBackup, new HashMap<String,User>(users));
+            // mapper.writeValue(postsBackup, new HashMap<Integer,Post>(posts));
+            // mapper.writeValue(followersBackup, new HashMap<String,HashSet<String>>(followers));
+            // mapper.writeValue(tagsUsersBackup, new HashMap<String,HashSet<String>>(tagsUsers));
+            // mapper.writeValue(idPostCounterBackup, idPostCounter);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private static void createBackupFiles () {
+        File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, followersBackup, idPostCounterBackup };
+        Arrays.asList(bkpFiles).forEach( (bkp) -> {
+                try {
+                if (!bkp.exists())
+                    bkp.createNewFile();
+                } catch (IOException e) {
+                    System.out.println("|ERROR: creating backup files");
+                }
+            });
     }
 
     public static void restoreBackup() {
@@ -110,33 +93,35 @@ public class ServerInternal {
             ObjectMapper mapper = new ObjectMapper();
             if (usersBackup.exists()) {
                 BufferedReader usersReader = new BufferedReader(new FileReader(usersBackup));
-                users = mapper.readValue(usersReader, new TypeReference<HashMap<String, User>>() {
+                users = mapper.readValue(usersReader, new TypeReference<ConcurrentHashMap<String, User>>() {
                 });
+                System.out.println("backup utenti effettuato");
             }
             if (postsBackup.exists()) {
                 BufferedReader postsReader = new BufferedReader(new FileReader(postsBackup));
-                posts = mapper.readValue(postsReader, new TypeReference<HashMap<Integer, Post>>() {
+                posts = mapper.readValue(postsReader, new TypeReference<ConcurrentHashMap<Integer, Post>>() {
                 });
+                System.out.println("backup post effettuato");
             }
             if (followersBackup.exists()) {
                 BufferedReader followersReader = new BufferedReader(new FileReader(followersBackup));
-                followers = mapper.readValue(followersReader, new TypeReference<HashMap<String, HashSet<String>>>() {
-                });
+                followers = mapper.readValue(followersReader,
+                        new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
+                        });
+                System.out.println("backup followers effettuato");
             }
             if (tagsUsersBackup.exists()) {
                 BufferedReader tagsUsersReader = new BufferedReader(new FileReader(tagsUsersBackup));
-                tagsUsers = mapper.readValue(tagsUsersReader, new TypeReference<HashMap<String, HashSet<String>>>() {
-                });
-            }
-            if (activeUsernamesBackup.exists()) {
-                BufferedReader activeUsernamesReader = new BufferedReader(new FileReader(activeUsernamesBackup));
-                activeUsernames = mapper.readValue(activeUsernamesReader, new TypeReference<HashSet<String>>() {
-                });
+                tagsUsers = mapper.readValue(tagsUsersReader,
+                        new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
+                        });
+                System.out.println("backup tagsUsers effettuato");
             }
             if (idPostCounterBackup.exists()) {
                 BufferedReader idPostCounterReader = new BufferedReader(new FileReader(idPostCounterBackup));
                 idPostCounter = mapper.readValue(idPostCounterReader, new TypeReference<Integer>() {
                 });
+                System.out.println("backup idPost effettuato");
             }
 
             // posts.forEach((k, v) -> System.out.println(k));
@@ -153,11 +138,12 @@ public class ServerInternal {
     // Methods used in RMI interface implementation
 
     public static Boolean usernameUnavailable(String username) {
-        return activeUsernames.contains(username);
+        return users.containsKey(username);
     }
 
     /**
      * adds user to winsome
+     * 
      * @param username
      * @param password
      * @param tags
@@ -165,7 +151,6 @@ public class ServerInternal {
      */
     public static void addUser(String username, String password, String tags) throws ExistingUser {
         users.put(username, new User(username, password, tags));
-        activeUsernames.add(username);
         ServerInternal.followers.put(username, new HashSet<String>());
     }
 
@@ -182,6 +167,7 @@ public class ServerInternal {
 
     /**
      * Add user to a tag set
+     * 
      * @param username
      * @param tag
      */
@@ -193,9 +179,6 @@ public class ServerInternal {
     public static int getIdPostCounter() {
         return idPostCounter++;
     }
-
-
-
 
     /**
      * @param username
@@ -509,32 +492,31 @@ public class ServerInternal {
         return 0;
     }
 
-    
-    public static double getWallet (String username){
+    public static double getWallet(String username) {
         User u = users.get(username);
         return u != null ? u.wallet : 0.0;
     };
 
-    public static double getWalletInBitcoin (String username){
+    public static double getWalletInBitcoin(String username) {
         double toRet = getWallet(username);
-        if (toRet != 0.0){
+        if (toRet != 0.0) {
 
             try {
                 URL url = new URL("https://www.random.org/decimal-fractions/?num=1&dec=10&col=1&format=plain&rnd=new");
                 HttpURLConnection con = (HttpURLConnection) url.openConnection();
                 con.setRequestMethod("GET");
-                
+
                 if (con.getResponseCode() == HttpURLConnection.HTTP_OK) {
                     BufferedReader reader = new BufferedReader(new InputStreamReader(con.getInputStream()));
-                    
+
                     String inputLine = "";
                     StringBuffer res = new StringBuffer();
-                    
+
                     while ((inputLine = reader.readLine()) != null) {
                         res.append(inputLine);
                     }
                     reader.close();
-                    
+
                     toRet *= Double.parseDouble(res.toString());
                 }
             } catch (Exception e) {
@@ -546,13 +528,11 @@ public class ServerInternal {
         return toRet;
     };
 
-
-
-
     // private utilities
 
     /**
      * Check's whether the given username is associated with a winsome user
+     * 
      * @param username
      * @return
      * @throws NotExistingUser
@@ -658,8 +638,6 @@ public class ServerInternal {
         }
 
     }
-
-    ;
 
     public static void rewardAlgorithm() {
         // get all the modified posts since the last time the algorithm got executed

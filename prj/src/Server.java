@@ -1,4 +1,3 @@
-import java.io.File;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -21,8 +20,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
-import java.util.Map.Entry;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 
 import exceptions.NotExistingPost;
@@ -32,11 +29,13 @@ class Server {
     private final int port;
     private final int multicastPort;
     private final String multicastString = "239.255.1.3";
-    private final long timeout = 10000;
+    private final long rewardTimeout = 10000;
+    private final long logTimeout = 5000;
     private volatile boolean quit = false;
     public int activeConnections;
     private ROSimp serverRMI = null;
     private HashMap<String, String> loggedUsers = new HashMap<>(); // (Remote) SocketAddress -> Username
+    private volatile Selector sel = null;
 
     /**
      *
@@ -51,6 +50,23 @@ class Server {
      * avvia l'esecuzione del server
      */
     public void start() throws RemoteException {
+        // TODO CONFIG
+
+        // RESTORE BACKUP
+        ServerInternal.restoreBackup();
+
+        // BOOTING UP THREADS
+        // Start loggerthread
+        Thread loggerThread = new Thread(this.loggerDaemon(this.logTimeout));
+        loggerThread.start();
+
+        // Start signal handler
+        Runtime.getRuntime().addShutdownHook(new Thread(this.signalHandlerFun(Thread.currentThread())));
+
+        // Start the reward periodic calculation
+        Thread rewardThread = new Thread(this.rewardDaemon());
+        rewardThread.start();
+
         // RMI setup
         this.serverRMI = new ROSimp();
         ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
@@ -58,61 +74,16 @@ class Server {
         LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
         // Now ready to handle RMI registration and followers's update notifications
 
-        // start the reward periodic calculation
-        Thread rewardThread = new Thread(this.rewardThread());
-        rewardThread.start();
+        Thread tcpThread = new Thread(this.selectorDaemon());
+        tcpThread.start();
 
-        // TCP setup
-        this.activeConnections = 0;
         try {
-            // Server setup
-            ServerSocketChannel s_channel = ServerSocketChannel.open();
-            s_channel.socket().bind(new InetSocketAddress(this.port));
-            s_channel.configureBlocking(false); // non-blocking policy
-            Selector sel = Selector.open();
-            s_channel.register(sel, SelectionKey.OP_ACCEPT);
-
-            // Server is running
-            System.out.printf("\t...waiting %d\n", this.port);
-            while (true) {
-                if (sel.select() == 0)
-                    continue;
-                Set<SelectionKey> selectedKeys = sel.selectedKeys(); // ready channels
-
-                // iterate on every ready channel
-                Iterator<SelectionKey> iter = selectedKeys.iterator();
-                while (iter.hasNext()) {
-                    SelectionKey key = iter.next();
-                    iter.remove(); // important step
-
-                    try {
-                        if (key.isAcceptable()) {
-                            // we have to create a SocketChannel for the new client
-                            ServerSocketChannel server = (ServerSocketChannel) key.channel();
-                            SocketChannel c_channel = server.accept(); // non-blocking client channel
-                            c_channel.configureBlocking(false);
-                            System.out.println(
-                                    "New connection from: " + c_channel.getRemoteAddress() +
-                                            " | active clients: " + ++this.activeConnections);
-
-                            // Server is going to read from this channel
-                            c_channel.register(sel, SelectionKey.OP_READ);
-
-                        } else if (key.isReadable()) { // READABLE
-                            this.getClientRequest(sel, key); // parse request
-                        }
-
-                        else if (key.isWritable()) { // WRITABLE
-                            this.sendResult(sel, key);
-                        }
-                    } catch (IOException | BufferUnderflowException e) { // if the client prematurely disconnects
-                        System.out.println(
-                                "CLIENT DISCONNECTED: " + ((SocketChannel) key.channel()).getRemoteAddress());
-                        clientExitHandler(key);
-                    }
-                }
-            }
-        } catch (IOException e) {
+            tcpThread.join();
+            rewardThread.interrupt();
+            rewardThread.join();
+            loggerThread.interrupt();
+            loggerThread.join();
+        } catch (InterruptedException e) {
             e.printStackTrace();
         }
     }
@@ -166,8 +137,6 @@ class Server {
         toSend.clear();
 
         answer[0].flip();
-        // System.out.println("Server: sent " + answer[0].getInt() + " bytes containing: "
-        //         + new String(toSend.array()).trim() + " || inviato al client " + c_channel.getRemoteAddress());
         if (toSend.hasRemaining()) {
             toSend.clear();
             c_channel.register(sel, SelectionKey.OP_READ);
@@ -199,17 +168,17 @@ class Server {
                  */
                 loggedUsers.put(k, param[1]);
                 // System.out.println("user logged in: " + param[1] + " " + param[2]);
-                toRet = "-Successfully logged in: " + multicastString  + " " +  multicastPort;
+                toRet = "-Successfully logged in: " + multicastString + " " + multicastPort;
             } else
                 toRet = "Some error";
-        }
-        // list users
-        else {
+        } else {
             String u = loggedUsers.get(k);
             try {
                 if (u == null) {
                     toRet = "Sign-in before sending requests";
-                } else if (Pattern.matches("^list\\s+users\\s*$", s)) {
+                }
+                // list users
+                else if (Pattern.matches("^list\\s+users\\s*$", s)) {
                     toRet = userWrapSet2String(ServerInternal.listUsers(u));
                 }
                 // list followers
@@ -222,7 +191,7 @@ class Server {
                         serverRMI.update(s);
                     } catch (RemoteException e) {
                         e.printStackTrace();
-                        System.out.println("ERROR while updating followers list");
+                        System.out.println("|ERROR updating followers list");
                     }
                 }
                 // list following
@@ -307,7 +276,7 @@ class Server {
                     return toRet = "Unknown command: " + s; // no matches, show help ? //TODO
                 }
             } catch (NotExistingUser e) {
-                toRet = "User not found"; // TODO
+                toRet = "User not found";
             } catch (NotExistingPost e) {
                 toRet = "Post not found";
             }
@@ -316,6 +285,7 @@ class Server {
         return toRet;
     }
 
+    // UTILITIES
     private static String userWrapSet2String(HashSet<ServerInternal.UserWrap> users) {
         String toRet = "User \t|\t Tag\n";
         for (ServerInternal.UserWrap u : users) {
@@ -346,10 +316,11 @@ class Server {
         return wrapper.toRet;
     }
 
-    private Runnable rewardThread() {
+    // THREADS implementation
+    private Runnable rewardDaemon() {
         return () -> {
             try (DatagramSocket skt = new DatagramSocket(this.multicastPort + 1)) {
-                while (!quit) {
+                while (!quit && !Thread.currentThread().isInterrupted()) {
                     byte[] msg = "Rewards calculated".getBytes();
                     try {
                         DatagramPacket dtg = new DatagramPacket(msg, msg.length, InetAddress.getByName(multicastString),
@@ -365,10 +336,9 @@ class Server {
 
                     ServerInternal.rewardAlgorithm();
                     try {
-                        Thread.sleep(this.timeout);
+                        Thread.sleep(this.rewardTimeout);
                     } catch (InterruptedException e) {
-                        System.out.println("|ERROR: rewardThread");
-                        e.printStackTrace();
+                        System.out.println("rewardThread woke");
                     }
                 }
                 if (skt != null)
@@ -376,6 +346,104 @@ class Server {
             } catch (SocketException e) {
                 e.printStackTrace();
             }
+            return;
+        };
+    }
+
+    private Runnable loggerDaemon(long timeout) {
+        return () -> {
+            while (!this.quit && !Thread.currentThread().isInterrupted()) {
+                try {
+                    Thread.sleep(timeout);
+                } catch (InterruptedException e) {
+                    System.out.println("Logger woke up");
+                }
+                // if clause to avoid writing 2 times the same stuff
+                if(!Thread.currentThread().isInterrupted()){
+                    // System.out.println("...Backing up...");
+                    ServerInternal.write2json();
+                }
+            }
+            // we want to be sure to perform backup on exit
+            ServerInternal.write2json();
+            System.out.println("Logger performed last backup");
+            return;
+        };
+
+    }
+
+    private Runnable signalHandlerFun(Thread mainThread) {
+        return () -> {
+            System.out.println("SIGINT | SIGTERM received => exiting...");
+            this.quit = true;
+            if (this.sel != null)
+                this.sel.wakeup();
+            try {
+                mainThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+                System.out.println("Handler interrupted");
+            }
+        };
+    }
+
+    private Runnable selectorDaemon() {
+        return () -> {
+
+            // TCP setup
+            this.activeConnections = 0;
+            try {
+                // Server setup
+                ServerSocketChannel s_channel = ServerSocketChannel.open();
+                s_channel.socket().bind(new InetSocketAddress(this.port));
+                s_channel.configureBlocking(false); // non-blocking policy
+                sel = Selector.open();
+                s_channel.register(sel, SelectionKey.OP_ACCEPT);
+
+                // Server is running
+                System.out.printf("\t...waiting %d\n", this.port);
+                while (!this.quit) {
+                    if (sel.select() == 0)
+                        continue;
+                    Set<SelectionKey> selectedKeys = sel.selectedKeys(); // ready channels
+
+                    // iterate on every ready channel
+                    Iterator<SelectionKey> iter = selectedKeys.iterator();
+                    while (iter.hasNext()) {
+                        SelectionKey key = iter.next();
+                        iter.remove(); // important step
+
+                        try {
+                            if (key.isAcceptable()) {
+                                // we have to create a SocketChannel for the new client
+                                ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                                SocketChannel c_channel = server.accept(); // non-blocking client channel
+                                c_channel.configureBlocking(false);
+                                System.out.println(
+                                        "New connection from: " + c_channel.getRemoteAddress() +
+                                                " | active clients: " + ++this.activeConnections);
+
+                                // Server is going to read from this channel
+                                c_channel.register(sel, SelectionKey.OP_READ);
+
+                            } else if (key.isReadable()) { // READABLE
+                                this.getClientRequest(sel, key); // parse request
+                            }
+
+                            else if (key.isWritable()) { // WRITABLE
+                                this.sendResult(sel, key);
+                            }
+                        } catch (IOException | BufferUnderflowException e) { // if the client prematurely disconnects
+                            System.out.println(
+                                    "CLIENT DISCONNECTED: " + ((SocketChannel) key.channel()).getRemoteAddress());
+                            clientExitHandler(key);
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return;
         };
     }
 

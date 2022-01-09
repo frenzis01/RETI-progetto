@@ -1,7 +1,7 @@
 {
   "u5" : {
     "username" : "u5",
-    "password" : "",
+    "password" : "5",
     "blog" : [ ],
     "followers" : [ ],
     "following" : [ "u1" ],
@@ -10,7 +10,7 @@
   },
   "u1" : {
     "username" : "u1",
-    "password" : "",
+    "password" : "1",
     "blog" : [ 0, 1 ],
     "followers" : [ "u5", "u2", "u4" ],
     "following" : [ "u2", "u3" ],
@@ -19,7 +19,7 @@
   },
   "u2" : {
     "username" : "u2",
-    "password" : "",
+    "password" : "2",
     "blog" : [ ],
     "followers" : [ "u1" ],
     "following" : [ "u1" ],
@@ -28,7 +28,7 @@
   },
   "u3" : {
     "username" : "u3",
-    "password" : "",
+    "password" : "3",
     "blog" : [ ],
     "followers" : [ "u1" ],
     "following" : [ ],

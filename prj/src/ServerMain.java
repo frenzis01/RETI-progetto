@@ -16,7 +16,7 @@ public class ServerMain {
         try {
 
             // createStubs();
-            ServerInternal.restoreBackup();
+            // ServerInternal.restoreBackup();
 
             // TCP server setup
             Server server = new Server(12345, 6789);
@@ -35,11 +35,11 @@ public class ServerMain {
 
     private static void createStubs() throws NotExistingPost, NotExistingUser, ExistingUser {
         // Add some users
-        ServerInternal.addUser("u1", "", "tag1 tag2");
-        ServerInternal.addUser("u2", "", "tag1 tag2");
-        ServerInternal.addUser("u3", "", "tag3");
+        ServerInternal.addUser("u1", "1", "tag1 tag2");
+        ServerInternal.addUser("u2", "2", "tag1 tag2");
+        ServerInternal.addUser("u3", "3", "tag3");
         ServerInternal.addUser("u4", "4", "tag4");
-        ServerInternal.addUser("u5", "", "tag5 tag6");
+        ServerInternal.addUser("u5", "5", "tag5 tag6");
 
         // Add some relationships between users
         ServerInternal.followUser("u2", "u1");
