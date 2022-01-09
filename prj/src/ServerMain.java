@@ -13,6 +13,7 @@ public class ServerMain {
     public static void main(String args[]) {
         try {
 
+            // createStubs();
             // TCP server setup
             Server server = new Server("../serverConfig.json");
             server.start();
@@ -50,7 +51,7 @@ public class ServerMain {
         ServerInternal.rewinPost(p.idPost, "u3");
 
         ServerInternal.rewardAlgorithm();
-        ServerInternal.rewardAlgorithm(); // this won't do anything, the modified post list has been confused
+        // ServerInternal.rewardAlgorithm(); // this won't do anything, the modified post list has been confused
         // ServerInternal.printWallets();
 
         ServerInternal.write2json();

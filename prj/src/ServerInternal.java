@@ -23,7 +23,8 @@ import exceptions.NotExistingUser;
 public class ServerInternal {
 
     private static volatile int idPostCounter = 0; // will write this in a json file
-    private static volatile int performedRewardIterations = 0; // will write this in a json file
+    private static volatile int rewardPerformedIterations = 0; // will write this in a json file
+
     private static ConcurrentHashMap<String, User> users = new ConcurrentHashMap<>();
     private static ConcurrentHashMap<String, HashSet<String>> tagsUsers = new ConcurrentHashMap<>();
     private static ConcurrentHashMap<Integer, Post> posts = new ConcurrentHashMap<>();
@@ -46,13 +47,11 @@ public class ServerInternal {
     private static File postsBackup = new File("../bkp/posts.json");
     private static File followersBackup = new File("../bkp/followers.json");
     private static File tagsUsersBackup = new File("../bkp/tagsUsers.json");
-    private static File idPostCounterBackup = new File("../bkp/idPostCounter.json");
+    private static File countersBackup = new File("../bkp/counters.json");
 
     public ServerInternal() {
         super();
     }
-
-
 
     // Methods used in RMI interface implementation
 
@@ -549,10 +548,18 @@ public class ServerInternal {
 
     /**
      * Algorithm to calculate winsome's rewards based on post interactions.
-     * Iterates on every modified post since the last time the algorithm ran, avoiding unmodified posts;
-     * to achieve this, it "consumes" three maps ( modifiedPostID -> {usersWhoInteracted}).
+     * Iterates on every modified post since the last time the algorithm ran,
+     * avoiding unmodified posts;
+     * to achieve this, it "consumes" three maps ( modifiedPostID ->
+     * {usersWhoInteracted}).
+     * 
+     * To avoid iterating also on unmodified posts to increment their "age", we save
+     * the number of times the reward algorithm has ran in the post
+     * at its creation, so that post.age := {current reward algorithm iterations} -
+     * {reward algorithm iterations at post's creation}
      */
     public static void rewardAlgorithm() {
+        rewardPerformedIterations++;
         // get all the modified posts since the last time the algorithm got executed
         // we will empty the three Collections once we're done evaluating
         HashSet<Integer> modifiedPosts = new HashSet<>();
@@ -584,9 +591,10 @@ public class ServerInternal {
                 });
 
                 Post post = posts.get(id); // we've already checked that posts.containsKey(id) == true
-                post.rewardAlgorithmIterations++; // it is initialized to 0, so we increment before calculating
+                // post.rewardAlgorithmIterations++; // it is initialized to 0, so we increment
+                // before calculating
                 double reward = (Math.log(Math.max(upvotes - downvotes, 0) + 1) + Math.log(wrapper.sum + 1))
-                        / post.rewardAlgorithmIterations;
+                        / (rewardPerformedIterations - post.rewardIterationsOnCreation);
                 post.reward += reward; // TODO is this somehow useful ...? probab not
 
                 // AUTHOR REWARD
@@ -616,7 +624,9 @@ public class ServerInternal {
         });
     }
 
-
+    public static int getRewardIterations() {
+        return ServerInternal.rewardPerformedIterations;
+    }
 
     // JSON BACKUP
 
@@ -635,17 +645,22 @@ public class ServerInternal {
             mapper.writeValue(postsBackup, posts);
             mapper.writeValue(followersBackup, followers);
             mapper.writeValue(tagsUsersBackup, tagsUsers);
-            mapper.writeValue(idPostCounterBackup, idPostCounter);
+            int[] counters = new int[]{ idPostCounter, rewardPerformedIterations };
+            Arrays.asList(counters).forEach( (v) -> System.out.println( " | " + v));
+            printCounters();
+            mapper.writeValue(countersBackup, counters);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
+
+
     /**
      * Checks for each .json backup file if already exists, if not it creates it
      */
     private static void createBackupFiles() {
-        File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, followersBackup, idPostCounterBackup };
+        File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, followersBackup, countersBackup };
         Arrays.asList(bkpFiles).forEach((bkp) -> {
             try {
                 if (!bkp.exists())
@@ -666,7 +681,7 @@ public class ServerInternal {
         postsBackup = new File(backupDir + "/posts.json");
         followersBackup = new File(backupDir + "/followers.json");
         tagsUsersBackup = new File(backupDir + "/tagsUsers.json");
-        idPostCounterBackup = new File(backupDir + "/idPostCounter.json");
+        countersBackup = new File(backupDir + "/counters.json");
     }
 
     /**
@@ -694,18 +709,25 @@ public class ServerInternal {
                         });
                 System.out.println("backup followers effettuato");
             }
-            if (tagsUsersBackup.exists()) {
+            if (tagsUsersBackup.exists())
+
+            {
                 BufferedReader tagsUsersReader = new BufferedReader(new FileReader(tagsUsersBackup));
                 tagsUsers = mapper.readValue(tagsUsersReader,
                         new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
                         });
                 System.out.println("backup tagsUsers effettuato");
             }
-            if (idPostCounterBackup.exists()) {
-                BufferedReader idPostCounterReader = new BufferedReader(new FileReader(idPostCounterBackup));
-                idPostCounter = mapper.readValue(idPostCounterReader, new TypeReference<Integer>() {
+            if (countersBackup.exists()) {
+                int[] counters = new int[2];
+                BufferedReader countersReader = new BufferedReader(new FileReader(countersBackup));
+                counters = mapper.readValue(countersReader, new TypeReference<int[]>() {
                 });
-                System.out.println("backup idPost effettuato");
+                ServerInternal.idPostCounter = counters[0];
+                ServerInternal.rewardPerformedIterations = counters[1];
+                printCounters();
+
+                System.out.println("backup counters effettuato");
             }
 
             System.out.println();
@@ -714,5 +736,9 @@ public class ServerInternal {
             System.out.println("|ERROR: restoreBackup");
             e.printStackTrace();
         }
+    }
+
+    private static void printCounters() {
+        System.out.println("Counters -> " + idPostCounter + " | " + rewardPerformedIterations);
     }
 }

@@ -374,6 +374,8 @@ class Server {
                         System.out.println("rewardThread woke");
                     }
                 }
+                // perform algorithm one last time
+                ServerInternal.rewardAlgorithm();
                 if (skt != null)
                     skt.close();
             } catch (SocketException e) {

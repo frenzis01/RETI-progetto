@@ -22,6 +22,7 @@ public class Client {
     private final int port;
     private volatile boolean exit;
     private volatile boolean logged = false;
+    private volatile boolean printEnable = false;
     private ROSint server;
     private ROCint stub = null;
 
@@ -40,20 +41,29 @@ public class Client {
             // RMI
             this.server = (ROSint) LocateRegistry.getRegistry(1900).lookup("rmi://127.0.0.1:1900");
         } catch (NotBoundException | RemoteException e) {
-            System.out.println("Could not locate registry");}
+            System.out.println("Could not locate registry");
+        }
 
         Thread sniffer = null;
 
         try (SocketChannel client = SocketChannel.open(new InetSocketAddress("localhost", port));) {
             BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
 
-            System.out.println("Client: connesso");
-            System.out.println("Digita 'exit' per uscire, i messaggi scritti saranno inviati al server:");
+            System.out.println(
+                    "Connected to the Server\n" +
+                    "Type 'exit' to close application.\n" + 
+                    "Type 'udp print' to enable/disable notifications printing");
 
             while (!this.exit) {
 
                 // get new request from commandline
                 String msg = consoleReader.readLine().trim();
+
+                if (Pattern.matches("^udp\\s+print\\s*$",msg)){
+                    printEnable = !printEnable;
+                    System.out.println("Reward calculation notification is now " + (printEnable ? "enabled" : "disabled"));
+                    continue;
+                }
 
                 if (Pattern.matches("^register\\s+\\S+\\s+\\S+\\s+.*\\s*$", msg)) {
                     String[] param = msg.split("\\s+", 4);
@@ -89,14 +99,13 @@ public class Client {
                     continue;
                 }
                 if (Pattern.matches("^logout\\s*$", msg)) {
-                    if (logged){
+                    if (logged) {
                         sniffer.interrupt();
                         server.unregisterForCallback(stub);
                         System.out.println("Logged out");
                     }
                     continue;
                 }
-                
 
                 String response = Util.readMsgFromSocket(client);
                 System.out.println(response);
@@ -115,8 +124,7 @@ public class Client {
 
             }
             System.out.println("Client: logout");
-        }
-         catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
@@ -140,7 +148,8 @@ public class Client {
                     // in this way the thread will terminate on the next received datagram
                     if (Thread.currentThread().isInterrupted())
                         break;
-                    System.out.println(new String(dp.getData()));
+                    if (printEnable)
+                        System.out.println(new String(dp.getData()));
                 }
                 ms.leaveGroup(group, netInt);
                 ms.close();

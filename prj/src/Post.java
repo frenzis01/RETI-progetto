@@ -21,13 +21,13 @@ public class Post implements Comparable<Post>, Serializable {
     @Getter @Setter HashSet<String> rewiners;
     // useful to check if a post should appear in someone's feed
 
-    // TODO reward
-    @Getter @Setter public int rewardAlgorithmIterations = 0;
+    @Getter @Setter public int rewardIterationsOnCreation = 0;
     @Getter @Setter public double reward = 0;
 
     // default constructor
     public Post(String title, String content, String owner) {
         this.idPost = ServerInternal.getIdPostCounter();
+        this.rewardIterationsOnCreation = ServerInternal.getRewardIterations();
         this.owner = new String(owner);
         this.title = new String(title);
         this.content = new String(content);
@@ -36,7 +36,6 @@ public class Post implements Comparable<Post>, Serializable {
         this.rewiners = new HashSet<>();
         this.upvote = new HashSet<>();
         this.downvote = new HashSet<>();
-        
         // ServerInternal.posts.put(this.idPost, this);
         // This is done by createPost in serverInternal
     }

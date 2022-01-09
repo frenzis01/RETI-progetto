@@ -4,12 +4,12 @@
     "owner" : "u1",
     "title" : "p1",
     "content" : "Lorem ipsum",
-    "date" : 1641738211191,
+    "date" : 1641771138565,
     "upvote" : [ ],
     "downvote" : [ ],
     "comments" : { },
     "rewiners" : [ ],
-    "rewardAlgorithmIterations" : 0,
+    "rewardIterationsOnCreation" : 0,
     "reward" : 0.0
   },
   "1" : {
@@ -17,7 +17,7 @@
     "owner" : "u1",
     "title" : "p2",
     "content" : "dolor sit amet",
-    "date" : 1641738211192,
+    "date" : 1641771138567,
     "upvote" : [ ],
     "downvote" : [ ],
     "comments" : {
@@ -25,7 +25,7 @@
       "u4" : [ "consectetur adipisce" ]
     },
     "rewiners" : [ ],
-    "rewardAlgorithmIterations" : 1,
+    "rewardIterationsOnCreation" : 0,
     "reward" : 1.2418802970999736
   }
 }
