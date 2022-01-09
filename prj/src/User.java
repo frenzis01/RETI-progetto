@@ -1,4 +1,3 @@
-import com.fasterxml.jackson.annotation.JsonCreator;
 import exceptions.ExistingUser;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

@@ -9,7 +9,6 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.rmi.AccessException;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
@@ -19,7 +18,6 @@ import java.util.regex.Pattern;
 import exceptions.ExistingUser;
 
 public class Client {
-    private final int BUFFER_DIMENSION = 1024;
     private final String EXIT_CMD = "exit";
     private final int port;
     private volatile boolean exit;

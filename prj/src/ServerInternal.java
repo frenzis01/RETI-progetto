@@ -1,7 +1,5 @@
 import java.io.*;
-import java.lang.reflect.Array;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -14,11 +12,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.*;
-import lombok.*;
 
 import exceptions.ExistingUser;
 import exceptions.NotExistingPost;
@@ -68,24 +64,26 @@ public class ServerInternal {
             mapper.writeValue(idPostCounterBackup, idPostCounter);
             // mapper.writeValue(usersBackup, new HashMap<String,User>(users));
             // mapper.writeValue(postsBackup, new HashMap<Integer,Post>(posts));
-            // mapper.writeValue(followersBackup, new HashMap<String,HashSet<String>>(followers));
-            // mapper.writeValue(tagsUsersBackup, new HashMap<String,HashSet<String>>(tagsUsers));
+            // mapper.writeValue(followersBackup, new
+            // HashMap<String,HashSet<String>>(followers));
+            // mapper.writeValue(tagsUsersBackup, new
+            // HashMap<String,HashSet<String>>(tagsUsers));
             // mapper.writeValue(idPostCounterBackup, idPostCounter);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static void createBackupFiles () {
+    private static void createBackupFiles() {
         File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, followersBackup, idPostCounterBackup };
-        Arrays.asList(bkpFiles).forEach( (bkp) -> {
-                try {
+        Arrays.asList(bkpFiles).forEach((bkp) -> {
+            try {
                 if (!bkp.exists())
                     bkp.createNewFile();
-                } catch (IOException e) {
-                    System.out.println("|ERROR: creating backup files");
-                }
-            });
+            } catch (IOException e) {
+                System.out.println("|ERROR: creating backup files");
+            }
+        });
     }
 
     public static void restoreBackup() {
@@ -132,8 +130,6 @@ public class ServerInternal {
             e.printStackTrace();
         }
     }
-
-
 
     // Methods used in RMI interface implementation
 
@@ -315,7 +311,7 @@ public class ServerInternal {
         User user = checkUsername(username);
         HashSet<PostWrap> toRet = new HashSet<>();
         for (Integer idPost : user.blog) {
-            toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
+                toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
         }
         return toRet;
     }
@@ -379,16 +375,10 @@ public class ServerInternal {
         Post p = checkPost(idPost);
         if (username.equals(p.owner)) {
             posts.remove(idPost);
-            // We have to remove the post from every blog
-            /**
-             * //TODO this has linear cost. Would it be better to skip this session
-             * and every time that we reference a post from a user's blog check if the post
-             * actually exists? it might be better in terms of performance, but requires a
-             * better
-             * error management system
-             */
-            users.forEach((String name, User u) -> {
-                u.blog.remove(idPost);
+            // We have to remove the post from owner's and rewiners's blog
+            user.blog.remove(idPost);
+            p.rewiners.forEach((String name) -> {
+                users.get(name).blog.remove(idPost);
             });
             return 0;
         }
@@ -429,7 +419,7 @@ public class ServerInternal {
      * @throws NotExistingPost
      */
     public static PostWrap showPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
-        User user = checkUsername(username);
+        checkUsername(username);
         Post p = checkPost(idPost);
         return new ServerInternal().new PostWrap(p);
     }
@@ -670,7 +660,7 @@ public class ServerInternal {
                     wrapper.sum += 2 / (1 + Math.pow(Math.E, -(cp - 1)));
                 });
 
-                Post post = posts.get(id);
+                Post post = posts.get(id); // we've already checked that posts.containsKey(id) == true
                 post.rewardAlgorithmIterations++; // it is initialized to 0, so we increment before calculating
                 double reward = (Math.log(Math.max(upvotes - downvotes, 0) + 1) + Math.log(wrapper.sum + 1))
                         / post.rewardAlgorithmIterations;

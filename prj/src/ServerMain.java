@@ -1,6 +1,4 @@
 import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.server.UnicastRemoteObject;
 
 import exceptions.ExistingUser;
 import exceptions.NotExistingPost;
@@ -15,19 +13,12 @@ public class ServerMain {
     public static void main(String args[]) {
         try {
 
-            // createStubs();
-            // ServerInternal.restoreBackup();
-
             // TCP server setup
             Server server = new Server(12345, 6789);
             server.start();
 
-            // while(true) {
-            // Thread.sleep(800);
-            // server.update("");
-            // }
         } catch (RemoteException e) {
-            System.out.println("ERROR while setting up RMI");
+            System.out.println("|ERROR starting server");
         } catch (Exception e) {
             e.printStackTrace();
         }
