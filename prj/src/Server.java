@@ -229,14 +229,18 @@ class Server {
                 // follow user
                 else if (Pattern.matches("^follow\\s+\\S+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    ServerInternal.followUser(param[1], u);
-                    toRet = "Now following \"" + param[1] + "\"";
+                    if (ServerInternal.followUser(param[1], u) == 0)
+                        toRet = "Now following \"" + param[1] + "\"";
+                    else
+                        toRet = "Already following \"" + param[1] + "\"";
                 }
                 // unfollow user
                 else if (Pattern.matches("^unfollow\\s+\\S+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    ServerInternal.unfollowUser(param[1], u);
-                    toRet = "Now unfollowing \"" + param[1] + "\"";
+                    if (ServerInternal.unfollowUser(param[1], u) == 0)
+                        toRet = "Now unfollowing \"" + param[1] + "\"";
+                    else
+                        toRet = "Already not following \"" + param[1] + "\"";
                 }
                 // view blog
                 else if (Pattern.matches("^blog\\s*$", s)) {
@@ -351,7 +355,8 @@ class Server {
                 while (!quit && !Thread.currentThread().isInterrupted()) {
                     byte[] msg = "Rewards calculated".getBytes();
                     try {
-                        DatagramPacket dtg = new DatagramPacket(msg, msg.length, InetAddress.getByName(this.config.multicastAddress),
+                        DatagramPacket dtg = new DatagramPacket(msg, msg.length,
+                                InetAddress.getByName(this.config.multicastAddress),
                                 this.config.multicastPort);
                         skt.send(dtg);
                     } catch (UnknownHostException | SocketException e1) {
