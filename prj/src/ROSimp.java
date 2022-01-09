@@ -21,7 +21,7 @@ public class ROSimp extends RemoteServer implements ROSint {
         
         ServerInternal.addUser(new String(username), new String(password), new String(tags));
         // debug
-        System.out.println("DUMB New User registered: " + username + " " + password + " " + tags);
+        System.out.println("New User registered: " + username + " " + password + " " + tags);
         return 0;
     }
 

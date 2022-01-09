@@ -1,4 +1,8 @@
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -22,42 +26,66 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import exceptions.NotExistingPost;
 import exceptions.NotExistingUser;
 
 class Server {
-    private final int port;
-    private final int multicastPort;
-    private final String multicastString = "239.255.1.3";
-    private final long rewardTimeout = 10000;
-    private final long logTimeout = 5000;
     private volatile boolean quit = false;
     public int activeConnections;
     private ROSimp serverRMI = null;
     private HashMap<String, String> loggedUsers = new HashMap<>(); // (Remote) SocketAddress -> Username
     private volatile Selector sel = null;
+    private ServerConfig config;
 
     /**
      *
      * @param port
      */
-    public Server(int port, int multicastPort) {
-        this.port = port;
-        this.multicastPort = multicastPort;
+    public Server(String configFilePath) {
+        this.config = readConfigFile(configFilePath);
+        ServerInternal.updateBackupDir(this.config.backupDir);
+    }
+
+    public ServerConfig readConfigFile(String configFilePath) {
+        ServerConfig servConfig = null;
+        ObjectMapper mapper = new ObjectMapper();
+        File configFile = new File(configFilePath);
+        try {
+            BufferedReader usersReader = new BufferedReader(new FileReader(configFile));
+            servConfig = mapper.readValue(usersReader, new TypeReference<ServerConfig>() {
+            });
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        System.out.println("Configuration file read.\nConfiguring the server as follows:");
+        for (Field f : servConfig.getClass().getDeclaredFields()) {
+
+            try {
+                System.out.println(" " + f.getName() + " : " + f.get(servConfig));
+            } catch (IllegalArgumentException | IllegalAccessException e) {
+                e.printStackTrace();
+            }
+        }
+        System.out.println();
+        return servConfig;
     }
 
     /**
      * avvia l'esecuzione del server
      */
     public void start() throws RemoteException {
-        // TODO CONFIG
+        // config already read by constructor
 
         // RESTORE BACKUP
         ServerInternal.restoreBackup();
 
         // BOOTING UP THREADS
         // Start loggerthread
-        Thread loggerThread = new Thread(this.loggerDaemon(this.logTimeout));
+        Thread loggerThread = new Thread(this.loggerDaemon(config.logTimeout));
         loggerThread.start();
 
         // Start signal handler
@@ -70,8 +98,8 @@ class Server {
         // RMI setup
         this.serverRMI = new ROSimp();
         ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
-        LocateRegistry.createRegistry(1900);
-        LocateRegistry.getRegistry(1900).rebind("rmi://127.0.0.1:1900", stub);
+        LocateRegistry.createRegistry(config.registryPort);
+        LocateRegistry.getRegistry(config.registryPort).rebind("rmi://127.0.0.1:1900", stub);
         // Now ready to handle RMI registration and followers's update notifications
 
         Thread tcpThread = new Thread(this.selectorDaemon());
@@ -168,7 +196,7 @@ class Server {
                  */
                 loggedUsers.put(k, param[1]);
                 // System.out.println("user logged in: " + param[1] + " " + param[2]);
-                toRet = "-Successfully logged in: " + multicastString + " " + multicastPort;
+                toRet = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
             } else
                 toRet = "Some error";
         } else {
@@ -319,12 +347,12 @@ class Server {
     // THREADS implementation
     private Runnable rewardDaemon() {
         return () -> {
-            try (DatagramSocket skt = new DatagramSocket(this.multicastPort + 1)) {
+            try (DatagramSocket skt = new DatagramSocket(this.config.multicastPort + 1)) {
                 while (!quit && !Thread.currentThread().isInterrupted()) {
                     byte[] msg = "Rewards calculated".getBytes();
                     try {
-                        DatagramPacket dtg = new DatagramPacket(msg, msg.length, InetAddress.getByName(multicastString),
-                                this.multicastPort);
+                        DatagramPacket dtg = new DatagramPacket(msg, msg.length, InetAddress.getByName(this.config.multicastAddress),
+                                this.config.multicastPort);
                         skt.send(dtg);
                     } catch (UnknownHostException | SocketException e1) {
                         System.out.println("|ERROR: multicast packet or socket");
@@ -336,7 +364,7 @@ class Server {
 
                     ServerInternal.rewardAlgorithm();
                     try {
-                        Thread.sleep(this.rewardTimeout);
+                        Thread.sleep(this.config.rewardTimeout);
                     } catch (InterruptedException e) {
                         System.out.println("rewardThread woke");
                     }
@@ -359,7 +387,7 @@ class Server {
                     System.out.println("Logger woke up");
                 }
                 // if clause to avoid writing 2 times the same stuff
-                if(!Thread.currentThread().isInterrupted()){
+                if (!Thread.currentThread().isInterrupted()) {
                     // System.out.println("...Backing up...");
                     ServerInternal.write2json();
                 }
@@ -395,13 +423,13 @@ class Server {
             try {
                 // Server setup
                 ServerSocketChannel s_channel = ServerSocketChannel.open();
-                s_channel.socket().bind(new InetSocketAddress(this.port));
+                s_channel.socket().bind(new InetSocketAddress(this.config.tcpPort));
                 s_channel.configureBlocking(false); // non-blocking policy
                 sel = Selector.open();
                 s_channel.register(sel, SelectionKey.OP_ACCEPT);
 
                 // Server is running
-                System.out.printf("\t...waiting %d\n", this.port);
+                System.out.printf("\t...waiting %d\n", this.config.tcpPort);
                 while (!this.quit) {
                     if (sel.select() == 0)
                         continue;
@@ -445,9 +473,5 @@ class Server {
             }
             return;
         };
-    }
-
-    public String getMulticastAddressPort() {
-        return new String(multicastString + multicastPort);
     }
 }

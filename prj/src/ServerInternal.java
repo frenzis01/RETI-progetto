@@ -40,15 +40,16 @@ public class ServerInternal {
     // we need it to notify the logged users
     private static ConcurrentHashMap<String, HashSet<String>> followers = new ConcurrentHashMap<>();
 
-    public ServerInternal() {
-        super();
-    }
-
+    // init to default values
     private static File usersBackup = new File("../bkp/users.json");
     private static File postsBackup = new File("../bkp/posts.json");
     private static File followersBackup = new File("../bkp/followers.json");
     private static File tagsUsersBackup = new File("../bkp/tagsUsers.json");
-    private static File idPostCounterBackup = new File("../bkp/idPostCounter.json"); // this is a bit overkill :) //TODO
+    private static File idPostCounterBackup = new File("../bkp/idPostCounter.json");
+
+    public ServerInternal() {
+        super();
+    }
 
     public static void write2json() {
         createBackupFiles();
@@ -62,19 +63,13 @@ public class ServerInternal {
             mapper.writeValue(followersBackup, followers);
             mapper.writeValue(tagsUsersBackup, tagsUsers);
             mapper.writeValue(idPostCounterBackup, idPostCounter);
-            // mapper.writeValue(usersBackup, new HashMap<String,User>(users));
-            // mapper.writeValue(postsBackup, new HashMap<Integer,Post>(posts));
-            // mapper.writeValue(followersBackup, new
-            // HashMap<String,HashSet<String>>(followers));
-            // mapper.writeValue(tagsUsersBackup, new
-            // HashMap<String,HashSet<String>>(tagsUsers));
-            // mapper.writeValue(idPostCounterBackup, idPostCounter);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private static void createBackupFiles() {
+
         File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, followersBackup, idPostCounterBackup };
         Arrays.asList(bkpFiles).forEach((bkp) -> {
             try {
@@ -84,6 +79,14 @@ public class ServerInternal {
                 System.out.println("|ERROR: creating backup files");
             }
         });
+    }
+
+    public static void updateBackupDir(String backupDir) {
+        usersBackup = new File(backupDir + "/users.json");
+        postsBackup = new File(backupDir + "/posts.json");
+        followersBackup = new File(backupDir + "/followers.json");
+        tagsUsersBackup = new File(backupDir + "/tagsUsers.json");
+        idPostCounterBackup = new File(backupDir + "/idPostCounter.json");
     }
 
     public static void restoreBackup() {
@@ -122,8 +125,7 @@ public class ServerInternal {
                 System.out.println("backup idPost effettuato");
             }
 
-            // posts.forEach((k, v) -> System.out.println(k));
-            // users.forEach((k, v) -> System.out.println(k));
+            System.out.println();
 
         } catch (IOException e) {
             System.out.println("|ERROR: restoreBackup");
@@ -311,7 +313,7 @@ public class ServerInternal {
         User user = checkUsername(username);
         HashSet<PostWrap> toRet = new HashSet<>();
         for (Integer idPost : user.blog) {
-                toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
+            toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
         }
         return toRet;
     }

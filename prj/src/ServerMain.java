@@ -14,7 +14,7 @@ public class ServerMain {
         try {
 
             // TCP server setup
-            Server server = new Server(12345, 6789);
+            Server server = new Server("../serverConfig.json");
             server.start();
 
         } catch (RemoteException e) {

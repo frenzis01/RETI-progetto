@@ -64,6 +64,12 @@ public class Client {
                     }
                     continue;
                 }
+
+                if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", msg) && logged) {
+                    System.out.println("User already logged in. Execute 'logout' first");
+                    continue;
+                }
+
                 // we'll write first the length of the request
                 ByteBuffer request = ByteBuffer.allocate(Integer.BYTES + msg.getBytes().length);
                 request.putInt(msg.length()); // add request length before the request itself
@@ -99,10 +105,11 @@ public class Client {
                         Pattern.matches("^-Successfully\\slogged\\sin:\\s+\\S+\\s+\\d+\\s*$", response)) {
                     logged = true;
                     String[] param = response.split("\\s+");
+                    String username = msg.split("\\s+")[1];
                     sniffer = new Thread(snifferThread(param[3], param[4]));
                     sniffer.start();
 
-                    stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(new String("username")), 0);
+                    stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(new String(username)), 0);
                     this.server.registerForCallback(stub);
                 }
 
