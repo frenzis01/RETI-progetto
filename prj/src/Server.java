@@ -50,27 +50,30 @@ class Server {
     }
 
     public ServerConfig readConfigFile(String configFilePath) {
-        ServerConfig servConfig = null;
+        ServerConfig servConfig = new ServerConfig();
         ObjectMapper mapper = new ObjectMapper();
         File configFile = new File(configFilePath);
-        try {
-            BufferedReader usersReader = new BufferedReader(new FileReader(configFile));
-            servConfig = mapper.readValue(usersReader, new TypeReference<ServerConfig>() {
-            });
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        System.out.println("Configuration file read.\nConfiguring the server as follows:");
-        for (Field f : servConfig.getClass().getDeclaredFields()) {
-
+        if (configFile.exists()) {
             try {
-                System.out.println(" " + f.getName() + " : " + f.get(servConfig));
-            } catch (IllegalArgumentException | IllegalAccessException e) {
+                BufferedReader usersReader = new BufferedReader(new FileReader(configFile));
+                servConfig = mapper.readValue(usersReader, new TypeReference<ServerConfig>() {
+                });
+            } catch (IOException e) {
                 e.printStackTrace();
             }
-        }
-        System.out.println();
+
+            System.out.println("Configuration file read.\nConfiguring the server as follows:");
+            for (Field f : servConfig.getClass().getDeclaredFields()) {
+
+                try {
+                    System.out.println(" " + f.getName() + " : " + f.get(servConfig));
+                } catch (IllegalArgumentException | IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
+            System.out.println();
+        } else
+            System.out.println("Config file not found. Using default values.");
         return servConfig;
     }
 
@@ -99,7 +102,7 @@ class Server {
         this.serverRMI = new ROSimp();
         ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
         LocateRegistry.createRegistry(config.registryPort);
-        LocateRegistry.getRegistry(config.registryPort).rebind("rmi://127.0.0.1:1900", stub);
+        LocateRegistry.getRegistry(config.registryPort).rebind("winsomeServer", stub);
         // Now ready to handle RMI registration and followers's update notifications
 
         Thread tcpThread = new Thread(this.selectorDaemon());
@@ -128,9 +131,9 @@ class Server {
         SocketChannel c_channel = (SocketChannel) key.channel();
 
         String msg = Util.readMsgFromSocket(c_channel);
-        System.out.print("Received | Result => " + msg);
+        System.out.println("-------" + c_channel.getRemoteAddress().toString()+ "\n | Received => " + msg);
         String res = parseRequest(msg, c_channel.getRemoteAddress().toString());
-        System.out.println(" |=> " + res);
+        System.out.println(" | Result => \n" + res + "\n-----------------------" );
         if (Pattern.matches("^logout\\s*$", msg)) { // client logged out
             System.out.println("client " + c_channel.getRemoteAddress());
             ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
@@ -181,6 +184,7 @@ class Server {
             loggedUsers.remove(cAddr.toString());
         key.channel().close();
         key.cancel();
+        this.activeConnections--;
     }
 
     private String parseRequest(String s, String k) {
@@ -190,13 +194,11 @@ class Server {
             String param[] = s.split("\\s+");
             if (ServerInternal.login(param[1], param[2]) == 0) {
                 /**
-                 * This 'put' will overwrite the entry of a user who prematurely disconnected
-                 * We might not be able to retrieve the address of a SelectionKey associated
-                 * with an already disconnected client (//TODO make sure of this)
+                 * This 'put' will overwrite the entry of a user who prematurely disconnected or logged out
                  */
                 loggedUsers.put(k, param[1]);
-                // System.out.println("user logged in: " + param[1] + " " + param[2]);
                 toRet = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
+
             } else
                 toRet = "Some error";
         } else {
@@ -212,11 +214,11 @@ class Server {
                 // list followers
                 else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
                     // the result sent through TCP isn't necessary, the client will get it by
-                    // itself
+                    // itself through RMI
                     // toRet = userWrapSet2String(ServerInternal.listFollowers(u));
-                    toRet = "";
+                    toRet = "Followers listed above";
                     try {
-                        serverRMI.update(s);
+                        serverRMI.update(u);
                     } catch (RemoteException e) {
                         e.printStackTrace();
                         System.out.println("|ERROR updating followers list");
@@ -304,6 +306,8 @@ class Server {
                 // get wallet bitcoin
                 else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {
                     toRet = "" + ServerInternal.getWalletInBitcoin(u);
+                } else if (Pattern.matches("^logout\\s*$", s) || Pattern.matches("^exit\\s*$", s)) {
+                    toRet = "No response will be sent";
                 } else {
                     return toRet = "Unknown command: " + s; // no matches, show help ? //TODO
                 }

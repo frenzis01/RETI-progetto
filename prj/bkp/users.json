@@ -21,7 +21,7 @@
     "username" : "u2",
     "password" : "2",
     "blog" : [ ],
-    "followers" : [ "u1" ],
+    "followers" : [ "u1", "u4" ],
     "following" : [ "u1" ],
     "wallet" : 0.18628204456499606,
     "tags" : [ "tag1", "tag2" ]
@@ -40,7 +40,7 @@
     "password" : "4",
     "blog" : [ ],
     "followers" : [ ],
-    "following" : [ "u1" ],
+    "following" : [ "u1", "u2" ],
     "wallet" : 0.18628204456499606,
     "tags" : [ "tag4" ]
   }

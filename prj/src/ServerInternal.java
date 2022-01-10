@@ -646,8 +646,6 @@ public class ServerInternal {
             mapper.writeValue(followersBackup, followers);
             mapper.writeValue(tagsUsersBackup, tagsUsers);
             int[] counters = new int[]{ idPostCounter, rewardPerformedIterations };
-            Arrays.asList(counters).forEach( (v) -> System.out.println( " | " + v));
-            printCounters();
             mapper.writeValue(countersBackup, counters);
         } catch (IOException e) {
             e.printStackTrace();

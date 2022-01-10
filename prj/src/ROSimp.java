@@ -44,10 +44,12 @@ public class ROSimp extends RemoteServer implements ROSint {
      * notifica di una modifica (follower in più o in meno) ai follower di 'followed'
      */
     public synchronized void update(String followed) throws RemoteException {
-        System.out.println("Starting callbacks.");
+        // System.out.println("Callback to -> " + followed);
         if (this.loggedUsers.containsKey(followed)) {
             this.loggedUsers.get(followed).newFollowers(ServerInternal.getFollowers(followed));
+            ServerInternal.getFollowers(followed).forEach((u) -> System.out.println(" " + u));
+            // TODO send users + tags
         }
-        System.out.println("Callbacks complete.");
+        // System.out.println("Callback to -> " + followed + " completed");
     }
 }
