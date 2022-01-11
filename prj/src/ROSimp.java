@@ -1,6 +1,8 @@
 import java.rmi.RemoteException;
 import java.rmi.server.RemoteServer;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.stream.Collectors;
 
 import exceptions.ExistingUser;
 
@@ -46,7 +48,11 @@ public class ROSimp extends RemoteServer implements ROSint {
     public synchronized void update(String followed) throws RemoteException {
         // System.out.println("Callback to -> " + followed);
         if (this.loggedUsers.containsKey(followed)) {
-            this.loggedUsers.get(followed).newFollowers(ServerInternal.getFollowers(followed));
+            this.loggedUsers.get(followed).
+                newFollowers(ServerInternal.getFollowers(followed)
+                .stream()
+                .map( u -> u.toString())
+                .collect(Collectors.toCollection(HashSet::new)));
             ServerInternal.getFollowers(followed).forEach((u) -> System.out.println(" " + u));
             // TODO send users + tags
         }

@@ -19,9 +19,7 @@ import java.nio.channels.SocketChannel;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -209,13 +207,13 @@ class Server {
                 }
                 // list users
                 else if (Pattern.matches("^list\\s+users\\s*$", s)) {
-                    toRet = userWrapSet2String(ServerInternal.listUsers(u));
+                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listUsers(u));
                 }
                 // list followers
                 else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
                     // the result sent through TCP isn't necessary, the client will get it by
                     // itself through RMI
-                    // toRet = userWrapSet2String(ServerInternal.listFollowers(u));
+                    // toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowers(u));
                     toRet = "Followers listed above";
                     try {
                         serverRMI.update(u);
@@ -226,7 +224,7 @@ class Server {
                 }
                 // list following
                 else if (Pattern.matches("^list\\s+following\\s*$", s)) {
-                    toRet = userWrapSet2String(ServerInternal.listFollowing(u));
+                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowing(u));
                 }
                 // follow user
                 else if (Pattern.matches("^follow\\s+\\S+\\s*$", s)) {
@@ -246,7 +244,7 @@ class Server {
                 }
                 // view blog
                 else if (Pattern.matches("^blog\\s*$", s)) {
-                    toRet = postWrapSet2String(ServerInternal.viewBlog(u));
+                    toRet = ServerInternal.postWrapSet2String(ServerInternal.viewBlog(u));
                 }
                 // create post
                 else if (Pattern.matches("^post\\s+\".+\"\\s+\".+\"\\s*$", s)) {
@@ -256,12 +254,12 @@ class Server {
                 }
                 // show feed
                 else if (Pattern.matches("^show\\s+feed\\s*$", s)) {
-                    toRet = postWrapSet2String(ServerInternal.showFeed(u));
+                    toRet = ServerInternal.postWrapSet2String(ServerInternal.showFeed(u));
                 }
                 // show post
                 else if (Pattern.matches("^show\\s+post\\s+\\d+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    toRet = postWrap2String(ServerInternal.showPost(Integer.parseInt(param[2]), u));
+                    toRet = ServerInternal.postWrap2String(ServerInternal.showPost(Integer.parseInt(param[2]), u));
                 }
                 // delete post
                 else if (Pattern.matches("^delete\\s+post\\s+\\d+\\s*$", s)) {
@@ -319,37 +317,6 @@ class Server {
         }
 
         return toRet;
-    }
-
-    // UTILITIES
-    private static String userWrapSet2String(HashSet<ServerInternal.UserWrap> users) {
-        String toRet = "User \t|\t Tag\n";
-        for (ServerInternal.UserWrap u : users) {
-            toRet = toRet + u.username + " \t|\t " + Arrays.toString(u.tags) + "\n";
-        }
-        return toRet;
-    }
-
-    private static String postWrapSet2String(HashSet<ServerInternal.PostWrap> posts) {
-        String toRet = "Id \t|\t Author \t|\t Title\n";
-        for (ServerInternal.PostWrap p : posts) {
-            toRet = toRet + p.idPost + "\t|\t" + p.owner + "\t|\t" + p.title + "\n";
-        }
-        return toRet;
-    }
-
-    private static String postWrap2String(ServerInternal.PostWrap p) {
-        var wrapper = new Object() {
-            String toRet = "Title: " + p.title + "\nContent: " + p.content + "\nVotes: " + p.upvote +
-                    "+ | " + p.downvote + "-\nComments:\n";
-        };
-        p.comments.forEach((u, comms) -> {
-            wrapper.toRet += "\t" + u + ":\n";
-            comms.forEach((c) -> {
-                wrapper.toRet += "\t " + c + "\n";
-            });
-        });
-        return wrapper.toRet;
     }
 
     // THREADS implementation

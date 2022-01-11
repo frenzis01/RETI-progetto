@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -77,8 +78,13 @@ public class ServerInternal {
      * @param username
      * @return username's followers (might be empty)
      */
-    public static HashSet<String> getFollowers(String username) {
-        return users.containsKey(username) ? new HashSet<String>(users.get(username).followers) : new HashSet<String>();
+    public static HashSet<UserWrap> getFollowers(String username) {
+        if (!users.containsKey(username))
+            return new HashSet<UserWrap>();
+        return users.get(username).followers.stream()
+        .filter( u -> users.containsKey(u))
+        .map(u -> new ServerInternal().new UserWrap(users.get(u)))
+        .collect(Collectors.toCollection(HashSet::new));
     }
 
     // Methods needed by User constructor
@@ -506,6 +512,11 @@ public class ServerInternal {
             return this.username.hashCode();
         }
 
+        @Override
+        public String toString() {
+            return this.username + " \t|\t " + Arrays.toString(this.tags);
+        }
+
     }
 
     public class PostWrap implements Comparable<PostWrap> {
@@ -544,6 +555,37 @@ public class ServerInternal {
             return Integer.hashCode(this.idPost);
         }
 
+    }
+
+    public static String userWrapSet2String(HashSet<ServerInternal.UserWrap> users) {
+        String toRet = "User \t|\t Tag\n";
+        for (ServerInternal.UserWrap u : users) {
+            toRet = toRet + u.username + " \t|\t " + Arrays.toString(u.tags) + "\n";
+        }
+        return toRet;
+    }
+
+    public static String postWrapSet2String(HashSet<ServerInternal.PostWrap> posts) {
+        String toRet = "Id \t|\t Author \t|\t Title\n";
+        for (ServerInternal.PostWrap p : posts) {
+            // toRet = toRet + p.idPost + "\t|\t" + p.owner + "\t|\t" + p.title + "\n";
+            toRet += p.toString();
+        }
+        return toRet;
+    }
+
+    public static String postWrap2String(ServerInternal.PostWrap p) {
+        var wrapper = new Object() {
+            String toRet = "Title: " + p.title + "\nContent: " + p.content + "\nVotes: " + p.upvote +
+                    "+ | " + p.downvote + "-\nComments:\n";
+        };
+        p.comments.forEach((u, comms) -> {
+            wrapper.toRet += "\t" + u + ":\n";
+            comms.forEach((c) -> {
+                wrapper.toRet += "\t " + c + "\n";
+            });
+        });
+        return wrapper.toRet;
     }
 
     /**
