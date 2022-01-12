@@ -1,3 +1,4 @@
+import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -8,21 +9,21 @@ import java.util.HashMap;
 import java.util.HashSet;
 
 @NoArgsConstructor
-public class Post implements Comparable<Post>, Serializable {
+public @Data class Post implements Comparable<Post>, Serializable {
 
-    @Getter @Setter int idPost;
-    @Getter @Setter String owner;
-    @Getter @Setter String title;
-    @Getter @Setter String content;
-    @Getter @Setter Timestamp date;
-    @Getter @Setter HashSet<String> upvote;
-    @Getter @Setter HashSet<String> downvote;
-    @Getter @Setter HashMap<String, HashSet<String>> comments;
-    @Getter @Setter HashSet<String> rewiners;
+    int idPost;
+    String owner;
+    String title;
+    String content;
+    Timestamp date;
+    HashSet<String> upvote;
+    HashSet<String> downvote;
+    HashMap<String, HashSet<String>> comments;
+    HashSet<String> rewiners;
     // useful to check if a post should appear in someone's feed
 
-    @Getter @Setter public int rewardIterationsOnCreation = 0;
-    @Getter @Setter public double reward = 0;
+    public int rewardIterationsOnCreation = 0;
+    public double reward = 0;
 
     // default constructor
     public Post(String title, String content, String owner) {

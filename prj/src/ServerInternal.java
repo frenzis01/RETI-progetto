@@ -194,12 +194,14 @@ public class ServerInternal {
      *
      * @param toFollow
      * @param username
-     * @return 0 successfully followed, 1 was following already
+     * @return 0 successfully followed, 1 was following already, 2 can't follow yourself
      * @throws NotExistingUser
      */
     public static int followUser(String toFollow, String username) throws NotExistingUser {
         User user = checkUsername(username);
         User followed = checkUsername(toFollow);
+        if (toFollow.equals(username))
+            return 2;
         user.following.add(toFollow);
         followed.followers.add(username);
         if (ServerInternal.followers.get(toFollow).add(username) == true)

@@ -229,10 +229,13 @@ class Server {
                 // follow user
                 else if (Pattern.matches("^follow\\s+\\S+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    if (ServerInternal.followUser(param[1], u) == 0)
+                    int res = ServerInternal.followUser(param[1], u);
+                    if (res == 0)
                         toRet = "Now following \"" + param[1] + "\"";
-                    else
+                    else if (res == 1)
                         toRet = "Already following \"" + param[1] + "\"";
+                    else
+                        toRet = "Can't follow yourself";
                 }
                 // unfollow user
                 else if (Pattern.matches("^unfollow\\s+\\S+\\s*$", s)) {

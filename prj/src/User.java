@@ -14,19 +14,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @NoArgsConstructor
-class User implements Comparable<User>, Serializable {
-    @Getter @Setter String username;
-    @Getter @Setter String password;
+public @Data class User implements Comparable<User>, Serializable {
+    String username;
+    String password;
 
-    @Getter @Setter HashSet<Integer> blog; 
+    HashSet<Integer> blog; 
     // same thing for users
-    @Getter @Setter HashSet<String> followers;
-    @Getter @Setter HashSet<String> following;
+    HashSet<String> followers;
+    HashSet<String> following;
 
-    @Getter @Setter double wallet = 0;
-    @Getter @Setter List<Transaction> walletHistory = new ArrayList<Transaction>();
+    double wallet = 0;
+    List<Transaction> walletHistory = new ArrayList<Transaction>();
 
-    @Getter @Setter String[] tags; // tags can't be modified
+    String[] tags; // tags can't be modified
 
 
     public User(String username, String password, String tags) throws ExistingUser {

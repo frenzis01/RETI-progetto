@@ -4,21 +4,21 @@
     "owner" : "u1",
     "title" : "p1",
     "content" : "Lorem ipsum",
-    "date" : 1641978318974,
-    "upvote" : [ "u2" ],
+    "date" : 1641980543857,
+    "upvote" : [ ],
     "downvote" : [ ],
     "comments" : { },
     "rewiners" : [ ],
     "rewardIterationsOnCreation" : 0,
-    "reward" : 0.033007008598092635
+    "reward" : 0.0
   },
   "1" : {
     "idPost" : 1,
     "owner" : "u1",
     "title" : "p2",
     "content" : "dolor sit amet",
-    "date" : 1641978318975,
-    "upvote" : [ "u2" ],
+    "date" : 1641980543858,
+    "upvote" : [ ],
     "downvote" : [ ],
     "comments" : {
       "u2" : [ "consectetur adipisci", "consectetur adipiscy" ],
@@ -27,5 +27,18 @@
     "rewiners" : [ ],
     "rewardIterationsOnCreation" : 0,
     "reward" : 1.2418802970999736
+  },
+  "2" : {
+    "idPost" : 2,
+    "owner" : "u2",
+    "title" : "title",
+    "content" : "content",
+    "date" : 1641980563823,
+    "upvote" : [ ],
+    "downvote" : [ ],
+    "comments" : { },
+    "rewiners" : [ ],
+    "rewardIterationsOnCreation" : 3,
+    "reward" : 0.0
   }
 }
