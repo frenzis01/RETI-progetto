@@ -299,7 +299,7 @@ class Server {
                 }
                 // get wallet
                 else if (Pattern.matches("^wallet\\s*$", s)) {
-                    toRet = "" + ServerInternal.getWallet(u);
+                    toRet = ServerInternal.getWallet(u);
                 }
                 // get wallet bitcoin
                 else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {

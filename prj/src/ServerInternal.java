@@ -2,6 +2,8 @@ import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -82,9 +84,9 @@ public class ServerInternal {
         if (!users.containsKey(username))
             return new HashSet<UserWrap>();
         return users.get(username).followers.stream()
-        .filter( u -> users.containsKey(u))
-        .map(u -> new ServerInternal().new UserWrap(users.get(u)))
-        .collect(Collectors.toCollection(HashSet::new));
+                .filter(u -> users.containsKey(u))
+                .map(u -> new ServerInternal().new UserWrap(users.get(u)))
+                .collect(Collectors.toCollection(HashSet::new));
     }
 
     // Methods needed by User constructor
@@ -407,13 +409,13 @@ public class ServerInternal {
         return 0;
     }
 
-    public static double getWallet(String username) {
+    public static String getWallet(String username) {
         User u = users.get(username);
-        return u != null ? u.wallet : 0.0;
+        return u != null ? (u.walletHistoryToString() + "\nTotal: " + u.wallet) : "0.0";
     };
 
     public static double getWalletInBitcoin(String username) {
-        double toRet = getWallet(username);
+        double toRet = users.get(username).wallet;
         if (toRet != 0.0) {
 
             try {
@@ -621,9 +623,13 @@ public class ServerInternal {
                 int upvotes = anyUpvotes ? newUpvotes.get(id).size() : 0;
                 int downvotes = anyDownvotes ? newDownvotes.get(id).size() : 0;
 
-                // count duplicates and get the number of comments for each "commenting" user
-                HashMap<String, Integer> nCommentsForEachUser = (HashMap<String, Integer>) newComments.get(id).stream()
-                        .collect(Collectors.toMap(Function.identity(), v -> 1, Integer::sum));
+                // count duplicates and get the number of comments for each "commenting" user, if any
+                HashMap<String, Integer> nCommentsForEachUser = newComments.containsKey(id)
+                        ? (HashMap<String, Integer>) newComments.get(id).stream()
+                                .collect(Collectors
+                                .toMap(Function.identity(), v -> 1, Integer::sum))
+                        : new HashMap<String, Integer>();
+                
                 // now apply the formula to each user and calculate the sum
                 var wrapper = new Object() {
                     Double sum = 0.0;
@@ -633,15 +639,18 @@ public class ServerInternal {
                 });
 
                 Post post = posts.get(id); // we've already checked that posts.containsKey(id) == true
-                // post.rewardAlgorithmIterations++; // it is initialized to 0, so we increment
-                // before calculating
                 double reward = (Math.log(Math.max(upvotes - downvotes, 0) + 1) + Math.log(wrapper.sum + 1))
                         / (rewardPerformedIterations - post.rewardIterationsOnCreation);
                 post.reward += reward; // TODO is this somehow useful ...? probab not
 
+                SimpleDateFormat x = new SimpleDateFormat("yyyy-mm-dd hh:mm:ss");
                 // AUTHOR REWARD
-                if (users.containsKey(post.owner))
-                    users.get(post.owner).wallet += reward * authorPercentage;
+                if (users.containsKey(post.owner)) {
+                    User owner = users.get(post.owner);
+                    owner.wallet += reward * authorPercentage;
+                    owner.walletHistory.add(new Transaction(x.format(Timestamp.valueOf(LocalDateTime.now())),
+                            Double.valueOf(reward * authorPercentage)));
+                }
 
                 // CURATOR REWARD
                 HashSet<String> empty = new HashSet<String>(); // .flatMap handles null stream, but .of doesn't
@@ -652,9 +661,12 @@ public class ServerInternal {
                         .flatMap(u -> u.stream())
                         .collect(Collectors.toSet());
 
-                curators.forEach((username) -> {
-                    if (users.containsKey(username)) // we ain't sure whether the user still exists or not
-                        users.get(username).wallet += reward / curators.size() * (1 - authorPercentage);
+                curators.stream().filter(u -> users.containsKey(u)).forEach((username) -> {
+                    users.get(username).wallet += reward / curators.size() * (1 - authorPercentage);
+                    users.get(username).walletHistory
+                            .add(new Transaction(x.format(Timestamp.valueOf(LocalDateTime.now())),
+                                    Double.valueOf(reward / curators.size() * (1 - authorPercentage))));
+
                     // we must use curators.size to avoid counting duplicates
                 });
 
@@ -687,14 +699,12 @@ public class ServerInternal {
             mapper.writeValue(postsBackup, posts);
             mapper.writeValue(followersBackup, followers);
             mapper.writeValue(tagsUsersBackup, tagsUsers);
-            int[] counters = new int[]{ idPostCounter, rewardPerformedIterations };
+            int[] counters = new int[] { idPostCounter, rewardPerformedIterations };
             mapper.writeValue(countersBackup, counters);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
-
-
 
     /**
      * Checks for each .json backup file if already exists, if not it creates it

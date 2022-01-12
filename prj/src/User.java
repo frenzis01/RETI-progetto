@@ -1,10 +1,17 @@
 import exceptions.ExistingUser;
+import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @NoArgsConstructor
 class User implements Comparable<User>, Serializable {
@@ -17,9 +24,9 @@ class User implements Comparable<User>, Serializable {
     @Getter @Setter HashSet<String> following;
 
     @Getter @Setter double wallet = 0;
+    @Getter @Setter List<Transaction> walletHistory = new ArrayList<Transaction>();
 
     @Getter @Setter String[] tags; // tags can't be modified
-
 
 
     public User(String username, String password, String tags) throws ExistingUser {
@@ -60,6 +67,14 @@ class User implements Comparable<User>, Serializable {
     @Override
     public int hashCode() {
         return this.username.hashCode();
+    }
+
+    // private static final SimpleDateFormat sdf1 = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss");
+
+    public String walletHistoryToString() {
+        return walletHistory.stream()
+        .map( t -> t.ts + " : " + t.value.toString())
+        .collect(Collectors.joining("\n"));
     }
 
 }

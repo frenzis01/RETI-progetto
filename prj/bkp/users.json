@@ -6,6 +6,7 @@
     "followers" : [ ],
     "following" : [ "u1" ],
     "wallet" : 0.0,
+    "walletHistory" : [ ],
     "tags" : [ "tag5", "tag6" ]
   },
   "u1" : {
@@ -14,16 +15,30 @@
     "blog" : [ 0, 1 ],
     "followers" : [ "u5", "u2", "u4" ],
     "following" : [ "u2", "u3" ],
-    "wallet" : 0.8693162079699814,
+    "wallet" : 0.8924211139886463,
+    "walletHistory" : [ {
+      "ts" : "2022-05-12 10:05:19",
+      "value" : 0.8693162079699814
+    }, {
+      "ts" : "2022-12-12 10:12:25",
+      "value" : 0.023104906018664842
+    } ],
     "tags" : [ "tag1", "tag2" ]
   },
   "u2" : {
     "username" : "u2",
     "password" : "2",
     "blog" : [ ],
-    "followers" : [ "u1", "u4" ],
+    "followers" : [ "u1" ],
     "following" : [ "u1" ],
-    "wallet" : 0.18628204456499606,
+    "wallet" : 0.19618414714442384,
+    "walletHistory" : [ {
+      "ts" : "2022-05-12 10:05:19",
+      "value" : 0.18628204456499606
+    }, {
+      "ts" : "2022-12-12 10:12:25",
+      "value" : 0.009902102579427792
+    } ],
     "tags" : [ "tag1", "tag2" ]
   },
   "u3" : {
@@ -33,6 +48,7 @@
     "followers" : [ "u1" ],
     "following" : [ ],
     "wallet" : 0.0,
+    "walletHistory" : [ ],
     "tags" : [ "tag3" ]
   },
   "u4" : {
@@ -40,8 +56,12 @@
     "password" : "4",
     "blog" : [ ],
     "followers" : [ ],
-    "following" : [ "u1", "u2" ],
+    "following" : [ "u1" ],
     "wallet" : 0.18628204456499606,
+    "walletHistory" : [ {
+      "ts" : "2022-05-12 10:05:19",
+      "value" : 0.18628204456499606
+    } ],
     "tags" : [ "tag4" ]
   }
 }
