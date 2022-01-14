@@ -3,5 +3,6 @@
     "registryPort" : "1900",
     "serverPort" : "12345",
     "serverNameLookup" : "winsomeServer",
-    "serverAddress" : "localhost"
+    "serverAddress" : "localhost",
+    "cli" : "true"
 }

@@ -72,7 +72,7 @@ public class Client {
         return clientConfig;
     }
 
-    public void start() {
+    public void start(String cliCommands) {
         // RMI setup
         try {
             this.server = (ROSint) LocateRegistry.getRegistry(this.config.registryAddress, this.config.registryPort)
@@ -89,6 +89,9 @@ public class Client {
         try (SocketChannel client = SocketChannel
                 .open(new InetSocketAddress(this.config.serverAddress, this.config.serverPort));) {
 
+            String[] commands = cliCommands.split("\\+");
+            int iCliCommands = 0;
+
             // we'll use this to read from cmdline
             BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
 
@@ -97,11 +100,13 @@ public class Client {
                             "Type 'exit' to close application.\n" +
                             "Type 'udp print' to enable/disable notifications printing");
 
+
             // Now the client is connected
-            while (!this.exit) {
+            while (!this.exit && iCliCommands < commands.length) {
+                
 
                 // get new request from commandline
-                String msg = consoleReader.readLine().trim();
+                String msg = config.cli ? commands[iCliCommands] : consoleReader.readLine().trim();
 
                 // "Rewards calculated" print enable/disable
                 if (Pattern.matches("^udp\\s+print\\s*$", msg)) {
@@ -179,6 +184,8 @@ public class Client {
                     stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(username), 0);
                     this.server.registerForCallback(stub);
                 }
+
+                iCliCommands = config.cli ? iCliCommands+1 : iCliCommands;
 
             }
 

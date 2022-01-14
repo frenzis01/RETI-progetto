@@ -1,12 +1,13 @@
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
-public class ClientConfig {
-    @Getter @Setter String registryAddress = "localhost";
-    @Getter @Setter String serverAddress = "localhost";
-    @Getter @Setter String serverNameLookup = "winsomeServer";
-    @Getter @Setter int registryPort = 1900;
-    @Getter @Setter int serverPort = 12345;
+public @Data class ClientConfig {
+    String registryAddress = "localhost";
+    String serverAddress = "localhost";
+    String serverNameLookup = "winsomeServer";
+    int registryPort = 1900;
+    int serverPort = 12345;
+    boolean cli = false;
+
 
     public ClientConfig() {super();}
 }
