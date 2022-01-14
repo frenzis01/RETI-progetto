@@ -12,6 +12,7 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -22,6 +23,9 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -34,9 +38,13 @@ class Server {
     private volatile boolean quit = false;
     public int activeConnections;
     private ROSimp serverRMI = null;
-    private HashMap<String, String> loggedUsers = new HashMap<>(); // (Remote) SocketAddress -> Username
+    private ConcurrentHashMap<String, String> loggedUsers = new ConcurrentHashMap<>(); // (Remote) SocketAddress ->
+                                                                                       // Username
     private volatile Selector sel = null;
     private ServerConfig config;
+    private ThreadPoolExecutor pool;
+    private Object lock = new Object();
+    private static Object stdOutlock = new Object();
 
     /**
      *
@@ -96,13 +104,15 @@ class Server {
         // Start signal handler
         Runtime.getRuntime().addShutdownHook(new Thread(this.signalHandlerFun(Thread.currentThread())));
 
-
         // RMI setup
         this.serverRMI = new ROSimp();
         ROSint stub = (ROSint) UnicastRemoteObject.exportObject(serverRMI, 39000);
         LocateRegistry.createRegistry(config.registryPort);
         LocateRegistry.getRegistry(config.registryPort).rebind("winsomeServer", stub);
         // Now ready to handle RMI registration and followers's update notifications
+
+        // TODO make this fixed?
+        this.pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(5);
 
         Thread tcpThread = new Thread(this.selectorDaemon());
         tcpThread.start();
@@ -129,26 +139,53 @@ class Server {
         // Create new SocketChannel with the Client
         SocketChannel c_channel = (SocketChannel) key.channel();
 
-        String msg = Util.readMsgFromSocket(c_channel);
-        System.out.println("-------" + c_channel.getRemoteAddress().toString()+ "\n | Received => " + msg);
-        String res = parseRequest(msg, c_channel.getRemoteAddress().toString());
-        System.out.println(" | Result => \n" + res + "\n-----------------------" );
-        if (Pattern.matches("^logout\\s*$", msg)) { // client logged out
-            System.out.println("client " + c_channel.getRemoteAddress());
+        String req = Util.readMsgFromSocket(c_channel);
+        p("-------" + c_channel.getRemoteAddress().toString() + "\n | Received => " + req);
+        if (Pattern.matches("^logout\\s*$", req)) { // client logged out
+            p("client " + c_channel.getRemoteAddress());
             ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
             loggedUsers.remove(c_channel.getRemoteAddress().toString());
         } else {
-            String result = (res != null && res != "" ? ("\n" + res) : "");
-            ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
-            length.putInt(result.length());
-            length.flip();
-
-            ByteBuffer message = ByteBuffer.wrap(result.getBytes());
-
-            ByteBuffer[] atc = { length, message };
-            c_channel.register(sel, SelectionKey.OP_WRITE, atc);
+            this.pool.execute(this.requestHandler(req, key));
         }
 
+    }
+
+    private Runnable requestHandler(String req, SelectionKey k) {
+        return () -> {
+            try {
+                SocketChannel c_channel = (SocketChannel) k.channel();
+                String res = parseRequest(req, c_channel.getRemoteAddress().toString());
+                p("------- Evaluated req by" + c_channel.getRemoteAddress().toString() + "\n | => " + req +
+                        "\n | Result => \n" + res + "\n-----------------------");
+
+                ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
+                length.putInt(res.length());
+                length.flip();
+
+                ByteBuffer message = ByteBuffer.wrap(res.getBytes());
+
+                ByteBuffer[] atc = { length, message };
+
+                synchronized (lock) {
+                    if (c_channel.isOpen()) {
+                        c_channel.register(sel, SelectionKey.OP_WRITE, atc);
+                    }
+                    sel.wakeup();
+                    
+                }
+
+            } catch (ClosedChannelException e) {
+                try {
+                    clientExitHandler(k);
+                } catch (IOException e1) {
+                    // should (almost) never be thrown
+                    e1.printStackTrace();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        };
     }
 
     /**
@@ -169,7 +206,11 @@ class Server {
         answer[0].flip();
         if (toSend.hasRemaining()) {
             toSend.clear();
-            c_channel.register(sel, SelectionKey.OP_READ);
+            // NO synchronized HERE! already acquired lock in tcpThread
+            synchronized (lock) {
+                c_channel.register(sel, SelectionKey.OP_READ);
+                sel.wakeup();
+            }
 
         }
 
@@ -178,12 +219,14 @@ class Server {
     private void clientExitHandler(SelectionKey key) throws IOException {
         // if the client has disconnected c.getRemoteAddress returns null
         SocketChannel c = (SocketChannel) key.channel();
-        SocketAddress cAddr = c.getRemoteAddress();
-        if (cAddr != null) // this seems always to be true
-            loggedUsers.remove(cAddr.toString());
-        key.channel().close();
-        key.cancel();
-        this.activeConnections--;
+        if (c.isOpen()){
+            SocketAddress cAddr = c.getRemoteAddress();
+            if (cAddr != null) // this seems always to be true
+                loggedUsers.remove(cAddr.toString());
+            key.channel().close();
+            key.cancel();
+            this.activeConnections--;
+        }
     }
 
     private String parseRequest(String s, String k) {
@@ -193,7 +236,8 @@ class Server {
             String param[] = s.split("\\s+");
             if (ServerInternal.login(param[1], param[2]) == 0) {
                 /**
-                 * This 'put' will overwrite the entry of a user who prematurely disconnected or logged out
+                 * This 'put' will overwrite the entry of a user who prematurely disconnected or
+                 * logged out
                  */
                 loggedUsers.put(k, param[1]);
                 toRet = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
@@ -335,10 +379,10 @@ class Server {
                                 this.config.multicastPort);
                         skt.send(dtg);
                     } catch (UnknownHostException | SocketException e1) {
-                        System.out.println("|ERROR: multicast packet or socket");
+                        p("|ERROR: multicast packet or socket");
                         e1.printStackTrace();
                     } catch (IOException e1) {
-                        System.out.println("|ERROR: multicast sending");
+                        p("|ERROR: multicast sending");
                         e1.printStackTrace();
                     }
 
@@ -346,7 +390,7 @@ class Server {
                     try {
                         Thread.sleep(this.config.rewardTimeout);
                     } catch (InterruptedException e) {
-                        System.out.println("rewardThread woke");
+                        p("rewardThread woke");
                     }
                 }
                 // perform algorithm one last time
@@ -360,17 +404,17 @@ class Server {
         };
     }
 
-    private Runnable loggerDaemon(long timeout,Thread rewardThread) {
+    private Runnable loggerDaemon(long timeout, Thread rewardThread) {
         return () -> {
             while (!this.quit && !Thread.currentThread().isInterrupted()) {
                 try {
                     Thread.sleep(timeout);
                 } catch (InterruptedException e) {
-                    System.out.println("Logger woke up");
+                    p("Logger woke up");
                 }
                 // if clause to avoid writing 2 times the same stuff
                 if (!Thread.currentThread().isInterrupted()) {
-                    // System.out.println("...Backing up...");
+                    // p("...Backing up...");
                     ServerInternal.write2json();
                 }
             }
@@ -383,7 +427,7 @@ class Server {
             }
             // then perform backup
             ServerInternal.write2json();
-            System.out.println("Logger performed last backup");
+            p("Logger performed last backup");
             return;
         };
 
@@ -436,7 +480,7 @@ class Server {
                                 ServerSocketChannel server = (ServerSocketChannel) key.channel();
                                 SocketChannel c_channel = server.accept(); // non-blocking client channel
                                 c_channel.configureBlocking(false);
-                                System.out.println(
+                                p(
                                         "New connection from: " + c_channel.getRemoteAddress() +
                                                 " | active clients: " + ++this.activeConnections);
 
@@ -444,17 +488,20 @@ class Server {
                                 c_channel.register(sel, SelectionKey.OP_READ);
 
                             } else if (key.isReadable()) { // READABLE
-                                this.getClientRequest(sel, key); // parse request
+                                this.getClientRequest(sel, key); // get request
                             }
 
                             else if (key.isWritable()) { // WRITABLE
                                 this.sendResult(sel, key);
                             }
                         } catch (IOException | BufferUnderflowException e) { // if the client prematurely disconnects
-                            System.out.println(
+                            p(
                                     "CLIENT DISCONNECTED: " + ((SocketChannel) key.channel()).getRemoteAddress());
                             clientExitHandler(key);
                         }
+                    }
+
+                    synchronized (lock) {
                     }
                 }
             } catch (IOException e) {
@@ -462,5 +509,11 @@ class Server {
             }
             return;
         };
+    }
+
+    private static void p(String s) {
+        synchronized (stdOutlock) {
+            System.out.println(s);
+        }
     }
 }

@@ -27,5 +27,20 @@
     "rewiners" : [ ],
     "rewardIterationsOnCreation" : 0,
     "reward" : 1.2418802970999736
+  },
+  "2" : {
+    "idPost" : 2,
+    "owner" : "u1",
+    "title" : "title",
+    "content" : "content",
+    "date" : 1642181262284,
+    "upvote" : [ "u2" ],
+    "downvote" : [ ],
+    "comments" : {
+      "u2" : [ "\"comment\"" ]
+    },
+    "rewiners" : [ ],
+    "rewardIterationsOnCreation" : 203,
+    "reward" : 0.40958697033087677
   }
 }

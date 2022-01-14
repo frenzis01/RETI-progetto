@@ -128,6 +128,14 @@ public class Client {
                     continue;
                 }
 
+                // We exit after sending the exit message
+                // It's important to notify the server about the logout
+                if (Pattern.matches("^exit\\s*$", msg)) {
+                    this.exit = true;
+                    client.close();
+                    continue;
+                }
+
                 // Generic request
                 // we'll write first the length of the request
                 ByteBuffer request = ByteBuffer.allocate(Integer.BYTES + msg.getBytes().length);
@@ -140,13 +148,6 @@ public class Client {
                 request.clear();
                 readBuffer.clear();
 
-                // We exit after sending the exit message
-                // It's important to notify the server about the logout
-                if (Pattern.matches("^exit\\s*$", msg)) {
-                    this.exit = true;
-                    client.close();
-                    continue;
-                }
 
                 // logout
                 if (Pattern.matches("^logout\\s*$", msg)) {
