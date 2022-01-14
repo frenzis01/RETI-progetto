@@ -85,16 +85,17 @@ class Server {
         ServerInternal.restoreBackup();
 
         // BOOTING UP THREADS
+        // Start the reward periodic calculation
+        Thread rewardThread = new Thread(this.rewardDaemon());
+        rewardThread.start();
+
         // Start loggerthread
-        Thread loggerThread = new Thread(this.loggerDaemon(config.logTimeout));
+        Thread loggerThread = new Thread(this.loggerDaemon(config.logTimeout, rewardThread));
         loggerThread.start();
 
         // Start signal handler
         Runtime.getRuntime().addShutdownHook(new Thread(this.signalHandlerFun(Thread.currentThread())));
 
-        // Start the reward periodic calculation
-        Thread rewardThread = new Thread(this.rewardDaemon());
-        rewardThread.start();
 
         // RMI setup
         this.serverRMI = new ROSimp();
@@ -109,7 +110,7 @@ class Server {
         try {
             tcpThread.join();
             rewardThread.interrupt();
-            rewardThread.join();
+            // rewardThread.join(); //this is done by loggerThread
             loggerThread.interrupt();
             loggerThread.join();
         } catch (InterruptedException e) {
@@ -270,7 +271,7 @@ class Server {
                     if (ServerInternal.deletePost(Integer.parseInt(param[2]), u) == 1)
                         toRet = "Cannot delete a post which isn't owned by you";
                     else
-                        toRet = "Post " + param[2] + "deleted";
+                        toRet = "Post " + param[2] + " deleted";
                 }
                 // rewin post
                 else if (Pattern.matches("^rewin\\s+post\\s+\\d+\\s*$", s)) {
@@ -278,7 +279,7 @@ class Server {
                     if (ServerInternal.rewinPost(Integer.parseInt(param[2]), u) == 1)
                         toRet = "Cannot rewin a post made by yourself";
                     else
-                        toRet = "Post " + param[2] + "rewined";
+                        toRet = "Post " + param[2] + " rewined";
                 }
                 // rate post
                 else if (Pattern.matches("^rate\\s+post\\s+\\d+\\s[+-]?\\d+\\s*$", s)) {
@@ -359,7 +360,7 @@ class Server {
         };
     }
 
-    private Runnable loggerDaemon(long timeout) {
+    private Runnable loggerDaemon(long timeout,Thread rewardThread) {
         return () -> {
             while (!this.quit && !Thread.currentThread().isInterrupted()) {
                 try {
@@ -374,6 +375,13 @@ class Server {
                 }
             }
             // we want to be sure to perform backup on exit
+            try {
+                // wait for the rewards to be calculated one last time
+                rewardThread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            // then perform backup
             ServerInternal.write2json();
             System.out.println("Logger performed last backup");
             return;

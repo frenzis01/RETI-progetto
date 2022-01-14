@@ -43,12 +43,13 @@ public class ServerInternal {
 
     // redundant who-is-following-who to avoid recalculating on every update
     // we need it to notify the logged users
-    private static ConcurrentHashMap<String, HashSet<String>> followers = new ConcurrentHashMap<>();
+    // private static ConcurrentHashMap<String, HashSet<String>> followers = new
+    // ConcurrentHashMap<>();
 
     // init to default values
     private static File usersBackup = new File("../bkp/users.json");
     private static File postsBackup = new File("../bkp/posts.json");
-    private static File followersBackup = new File("../bkp/followers.json");
+    // private static File followersBackup = new File("../bkp/followers.json");
     private static File tagsUsersBackup = new File("../bkp/tagsUsers.json");
     private static File countersBackup = new File("../bkp/counters.json");
 
@@ -72,7 +73,7 @@ public class ServerInternal {
      */
     public static void addUser(String username, String password, String tags) throws ExistingUser {
         users.put(username, new User(username, password, tags));
-        ServerInternal.followers.put(username, new HashSet<String>());
+        // ServerInternal.followers.put(username, new HashSet<String>());
     }
 
     /**
@@ -194,7 +195,8 @@ public class ServerInternal {
      *
      * @param toFollow
      * @param username
-     * @return 0 successfully followed, 1 was following already, 2 can't follow yourself
+     * @return 0 successfully followed, 1 was following already, 2 can't follow
+     *         yourself
      * @throws NotExistingUser
      */
     public static int followUser(String toFollow, String username) throws NotExistingUser {
@@ -203,8 +205,8 @@ public class ServerInternal {
         if (toFollow.equals(username))
             return 2;
         user.following.add(toFollow);
-        followed.followers.add(username);
-        if (ServerInternal.followers.get(toFollow).add(username) == true)
+        // if (ServerInternal.followers.get(toFollow).add(username) == true)
+        if (followed.followers.add(username) == true)
             return 0;
         return 1;
     }
@@ -223,8 +225,8 @@ public class ServerInternal {
         User user = checkUsername(username);
         User followed = checkUsername(toUnfollow);
         user.following.remove(toUnfollow);
-        followed.followers.remove(username);
-        if (ServerInternal.followers.get(toUnfollow).remove(username) == true)
+        // if (ServerInternal.followers.get(toUnfollow).remove(username) == true)
+        if (followed.followers.remove(username) == true)
             return 0;
         return 1;
     }
@@ -481,7 +483,8 @@ public class ServerInternal {
      * @return
      */
     private static boolean checkFeed(User user, Post p) {
-        if (!user.following.contains(p.owner) && Collections.disjoint(user.following, p.rewiners) == true)
+        if ((!user.following.contains(p.owner) && Collections.disjoint(user.following, p.rewiners) == true)
+                || user.username.equals(p.owner))
             return false;
         return true;
     }
@@ -572,8 +575,7 @@ public class ServerInternal {
     public static String postWrapSet2String(HashSet<ServerInternal.PostWrap> posts) {
         String toRet = "Id \t|\t Author \t|\t Title\n";
         for (ServerInternal.PostWrap p : posts) {
-            // toRet = toRet + p.idPost + "\t|\t" + p.owner + "\t|\t" + p.title + "\n";
-            toRet += p.toString();
+            toRet = toRet + p.idPost + "\t|\t" + p.owner + "\t|\t" + p.title + "\n";
         }
         return toRet;
     }
@@ -625,13 +627,14 @@ public class ServerInternal {
                 int upvotes = anyUpvotes ? newUpvotes.get(id).size() : 0;
                 int downvotes = anyDownvotes ? newDownvotes.get(id).size() : 0;
 
-                // count duplicates and get the number of comments for each "commenting" user, if any
+                // count duplicates and get the number of comments for each "commenting" user,
+                // if any
                 HashMap<String, Integer> nCommentsForEachUser = newComments.containsKey(id)
                         ? (HashMap<String, Integer>) newComments.get(id).stream()
                                 .collect(Collectors
-                                .toMap(Function.identity(), v -> 1, Integer::sum))
+                                        .toMap(Function.identity(), v -> 1, Integer::sum))
                         : new HashMap<String, Integer>();
-                
+
                 // now apply the formula to each user and calculate the sum
                 var wrapper = new Object() {
                     Double sum = 0.0;
@@ -699,7 +702,7 @@ public class ServerInternal {
         try {
             mapper.writeValue(usersBackup, users);
             mapper.writeValue(postsBackup, posts);
-            mapper.writeValue(followersBackup, followers);
+            // mapper.writeValue(followersBackup, followers);
             mapper.writeValue(tagsUsersBackup, tagsUsers);
             int[] counters = new int[] { idPostCounter, rewardPerformedIterations };
             mapper.writeValue(countersBackup, counters);
@@ -712,7 +715,7 @@ public class ServerInternal {
      * Checks for each .json backup file if already exists, if not it creates it
      */
     private static void createBackupFiles() {
-        File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, followersBackup, countersBackup };
+        File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, /* followersBackup, */ countersBackup };
         Arrays.asList(bkpFiles).forEach((bkp) -> {
             try {
                 if (!bkp.exists())
@@ -731,7 +734,7 @@ public class ServerInternal {
     public static void updateBackupDir(String backupDir) {
         usersBackup = new File(backupDir + "/users.json");
         postsBackup = new File(backupDir + "/posts.json");
-        followersBackup = new File(backupDir + "/followers.json");
+        // followersBackup = new File(backupDir + "/followers.json");
         tagsUsersBackup = new File(backupDir + "/tagsUsers.json");
         countersBackup = new File(backupDir + "/counters.json");
     }
@@ -741,46 +744,44 @@ public class ServerInternal {
      */
     public static void restoreBackup() {
         try {
+            if (!(usersBackup.exists() && postsBackup.exists() && tagsUsersBackup.exists()
+                    && countersBackup.exists())) {
+                System.out.println("Cannot restore internal status: One or more .json files missing");
+                return;
+            }
             ObjectMapper mapper = new ObjectMapper();
-            if (usersBackup.exists()) {
-                BufferedReader usersReader = new BufferedReader(new FileReader(usersBackup));
-                users = mapper.readValue(usersReader, new TypeReference<ConcurrentHashMap<String, User>>() {
-                });
-                System.out.println("backup utenti effettuato");
-            }
-            if (postsBackup.exists()) {
-                BufferedReader postsReader = new BufferedReader(new FileReader(postsBackup));
-                posts = mapper.readValue(postsReader, new TypeReference<ConcurrentHashMap<Integer, Post>>() {
-                });
-                System.out.println("backup post effettuato");
-            }
-            if (followersBackup.exists()) {
-                BufferedReader followersReader = new BufferedReader(new FileReader(followersBackup));
-                followers = mapper.readValue(followersReader,
-                        new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
-                        });
-                System.out.println("backup followers effettuato");
-            }
-            if (tagsUsersBackup.exists())
+            BufferedReader backupReader = new BufferedReader(new FileReader(usersBackup));
+            users = mapper.readValue(backupReader, new TypeReference<ConcurrentHashMap<String, User>>() {
+            });
+            System.out.println("backup utenti effettuato");
+            backupReader = new BufferedReader(new FileReader(postsBackup));
+            posts = mapper.readValue(backupReader, new TypeReference<ConcurrentHashMap<Integer, Post>>() {
+            });
+            System.out.println("backup post effettuato");
+            // if (followersBackup.exists()) {
+            // backupReader = new BufferedReader(new
+            // FileReader(followersBackup));
+            // followers = mapper.readValue(backupReader,
+            // new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
+            // });
+            // System.out.println("backup followers effettuato");
+            // }
 
-            {
-                BufferedReader tagsUsersReader = new BufferedReader(new FileReader(tagsUsersBackup));
-                tagsUsers = mapper.readValue(tagsUsersReader,
-                        new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
-                        });
-                System.out.println("backup tagsUsers effettuato");
-            }
-            if (countersBackup.exists()) {
-                int[] counters = new int[2];
-                BufferedReader countersReader = new BufferedReader(new FileReader(countersBackup));
-                counters = mapper.readValue(countersReader, new TypeReference<int[]>() {
-                });
-                ServerInternal.idPostCounter = counters[0];
-                ServerInternal.rewardPerformedIterations = counters[1];
-                printCounters();
+            backupReader = new BufferedReader(new FileReader(tagsUsersBackup));
+            tagsUsers = mapper.readValue(backupReader,
+                    new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
+                    });
+            System.out.println("backup tagsUsers effettuato");
 
-                System.out.println("backup counters effettuato");
-            }
+            int[] counters = new int[2];
+            backupReader = new BufferedReader(new FileReader(countersBackup));
+            counters = mapper.readValue(backupReader, new TypeReference<int[]>() {
+            });
+            ServerInternal.idPostCounter = counters[0];
+            ServerInternal.rewardPerformedIterations = counters[1];
+            printCounters();
+
+            System.out.println("backup counters effettuato");
 
             System.out.println();
 
