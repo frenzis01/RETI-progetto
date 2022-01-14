@@ -41,15 +41,9 @@ public class ServerInternal {
 
     private static double authorPercentage = 0.7;
 
-    // redundant who-is-following-who to avoid recalculating on every update
-    // we need it to notify the logged users
-    // private static ConcurrentHashMap<String, HashSet<String>> followers = new
-    // ConcurrentHashMap<>();
-
     // init to default values
     private static File usersBackup = new File("../bkp/users.json");
     private static File postsBackup = new File("../bkp/posts.json");
-    // private static File followersBackup = new File("../bkp/followers.json");
     private static File tagsUsersBackup = new File("../bkp/tagsUsers.json");
     private static File countersBackup = new File("../bkp/counters.json");
 
@@ -146,7 +140,10 @@ public class ServerInternal {
     public static HashSet<UserWrap> listUsers(String username) throws NotExistingUser {
         User user = checkUsername(username);
         HashSet<UserWrap> toRet = new HashSet<>();
-        for (String tag : user.tags) {
+        user.readl.lock();
+        String[] tags = user.tags.clone();
+        user.readl.unlock();
+        for (String tag : tags) {
             tagsUsers.get(tag)
                     .forEach((u) -> {
                         System.out.println(u);
@@ -168,7 +165,11 @@ public class ServerInternal {
     public static HashSet<UserWrap> listFollowers(String username) throws NotExistingUser {
         User user = checkUsername(username);
         HashSet<UserWrap> toRet = new HashSet<>();
-        for (String follower : user.followers)
+        user.readl.lock();
+        HashSet<String> followers = new HashSet<String>(user.followers);
+        user.readl.unlock();
+
+        for (String follower : followers)
             toRet.add(new ServerInternal().new UserWrap(users.get(follower)));
         return toRet;
     }
@@ -183,7 +184,11 @@ public class ServerInternal {
     public static HashSet<UserWrap> listFollowing(String username) throws NotExistingUser {
         User user = checkUsername(username);
         HashSet<UserWrap> toRet = new HashSet<>();
-        for (String followed : user.following)
+        user.readl.lock();
+        HashSet<String> following = new HashSet<String>(user.following);
+        user.readl.lock();
+
+        for (String followed : following)
             toRet.add(new ServerInternal().new UserWrap(users.get(followed)));
         return toRet;
     }
@@ -204,10 +209,17 @@ public class ServerInternal {
         User followed = checkUsername(toFollow);
         if (toFollow.equals(username))
             return 2;
+        user.writel.lock();
         user.following.add(toFollow);
-        // if (ServerInternal.followers.get(toFollow).add(username) == true)
-        if (followed.followers.add(username) == true)
+        user.writel.unlock();
+
+        followed.writel.lock();
+        boolean res = followed.followers.add(username);
+        followed.writel.unlock();
+
+        if (res == true) {
             return 0;
+        }
         return 1;
     }
 
@@ -224,9 +236,15 @@ public class ServerInternal {
     public static int unfollowUser(String toUnfollow, String username) throws NotExistingUser {
         User user = checkUsername(username);
         User followed = checkUsername(toUnfollow);
+        user.writel.lock();
         user.following.remove(toUnfollow);
-        // if (ServerInternal.followers.get(toUnfollow).remove(username) == true)
-        if (followed.followers.remove(username) == true)
+        user.writel.unlock();
+
+        followed.writel.lock();
+        boolean res = followed.followers.remove(username);
+        followed.writel.unlock();
+
+        if (res == true)
             return 0;
         return 1;
     }
@@ -241,7 +259,11 @@ public class ServerInternal {
     public static HashSet<PostWrap> viewBlog(String username) throws NotExistingUser {
         User user = checkUsername(username);
         HashSet<PostWrap> toRet = new HashSet<>();
-        for (Integer idPost : user.blog) {
+        user.readl.lock();
+        HashSet<Integer> blog = new HashSet<Integer>(user.blog);
+        user.readl.unlock();
+
+        for (Integer idPost : blog) {
             toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
         }
         return toRet;
@@ -264,7 +286,11 @@ public class ServerInternal {
             throw new NullPointerException();
         Post newPost = new Post(titolo, contenuto, username);
         posts.put(newPost.idPost, newPost);
+
+        user.writel.lock();
         user.blog.add(newPost.idPost);
+        user.writel.unlock();
+
         return new ServerInternal().new PostWrap(newPost);
     }
 
@@ -281,9 +307,16 @@ public class ServerInternal {
         HashSet<PostWrap> toRet = new HashSet<>();
         // iterates over the set of users the client follows
         // for each of them retrieves all of their posts (aka blog)
-        for (String followed : user.following) {
+        user.readl.lock();
+        HashSet<String> following = new HashSet<String>(user.following);
+        user.readl.unlock();
+        for (String followed : following) {
             User followedUser = checkUsername(followed); // this should never throw an exception
-            followedUser.blog.forEach((Integer p) -> {
+            followedUser.readl.lock();
+            HashSet<Integer> blog = new HashSet<Integer>(followedUser.blog);
+            followedUser.readl.unlock();
+
+            blog.forEach((Integer p) -> {
                 toRet.add(new ServerInternal().new PostWrap(posts.get(p)));
             });
         }
@@ -307,9 +340,19 @@ public class ServerInternal {
         if (username.equals(p.owner)) {
             posts.remove(idPost);
             // We have to remove the post from owner's and rewiners's blog
+            user.writel.lock();
             user.blog.remove(idPost);
-            p.rewiners.forEach((String name) -> {
+            user.writel.unlock();
+
+            p.readl.lock();
+            HashSet<String> rewiners = new HashSet<String>(p.rewiners);
+            p.readl.unlock();
+
+            rewiners.forEach((String name) -> {
+                User rewiner = users.get(name);
+                rewiner.writel.lock();
                 users.get(name).blog.remove(idPost);
+                rewiner.writel.unlock();
             });
             return 0;
         }
@@ -335,8 +378,13 @@ public class ServerInternal {
             return 1;
         if (!checkFeed(user, p))
             return 2;
+        user.writel.lock();
         user.blog.add(p.idPost);
+        user.writel.unlock();
+        p.writel.lock();
         p.rewiners.add(username);
+        p.writel.unlock();
+
         return 0;
     }
 
@@ -371,8 +419,11 @@ public class ServerInternal {
         if (!checkFeed(user, p))
             return 1;
         // check if user has already voted
-        if (p.upvote.contains(username) || p.downvote.contains(username))
+        p.writel.lock();
+        if (p.upvote.contains(username) || p.downvote.contains(username)) {
+            p.writel.unlock();
             return 2;
+        }
         if (vote >= 0) {
             p.upvote.add(username);
             ServerInternal.newUpvotes.putIfAbsent(idPost, new HashSet<String>());
@@ -382,6 +433,7 @@ public class ServerInternal {
             ServerInternal.newDownvotes.putIfAbsent(idPost, new HashSet<String>());
             ServerInternal.newDownvotes.get(idPost).add(username);
         }
+        p.writel.unlock();
         return 0;
     }
 
@@ -404,8 +456,11 @@ public class ServerInternal {
         Post p = checkPost(idPost);
         if (!checkFeed(user, p))
             return 1;
+
+        p.writel.lock();
         p.comments.putIfAbsent(username, new HashSet<>());
         p.comments.get(username).add(comment);
+        p.writel.unlock();
 
         // add comment to newComments
         ServerInternal.newComments.putIfAbsent(idPost, new ArrayList<String>());
@@ -419,7 +474,10 @@ public class ServerInternal {
     };
 
     public static double getWalletInBitcoin(String username) {
-        double toRet = users.get(username).wallet;
+        User u = users.get(username);
+        u.readl.lock();
+        double toRet = u.wallet;
+        u.readl.unlock();
         if (toRet != 0.0) {
 
             try {
@@ -483,8 +541,15 @@ public class ServerInternal {
      * @return
      */
     private static boolean checkFeed(User user, Post p) {
-        if ((!user.following.contains(p.owner) && Collections.disjoint(user.following, p.rewiners) == true)
-                || user.username.equals(p.owner))
+        p.readl.lock();
+        HashSet<String> rewinersCopy = new HashSet<String>(p.rewiners);
+        p.readl.unlock();
+
+        user.readl.lock();
+        boolean res = (!user.following.contains(p.owner) && Collections.disjoint(user.following, rewinersCopy) == true)
+                || user.username.equals(p.owner);
+        user.readl.unlock();
+        if (res)
             return false;
         return true;
     }
@@ -495,10 +560,12 @@ public class ServerInternal {
         final HashSet<String> followers, following;
 
         private UserWrap(User u) {
+            u.readl.lock();
             this.username = u.username;
             this.tags = u.tags.clone();
             this.followers = new HashSet<String>(u.followers);
             this.following = new HashSet<String>(u.following);
+            u.readl.unlock();
         }
 
         public int compareTo(UserWrap u) {
@@ -534,6 +601,7 @@ public class ServerInternal {
         final Timestamp date;
 
         public PostWrap(Post p) {
+            p.readl.lock();
             this.owner = new String(p.owner);
             this.idPost = p.idPost;
             this.upvote = p.upvote.size();
@@ -542,6 +610,7 @@ public class ServerInternal {
             this.comments = new HashMap<>(p.comments);
             this.date = (Timestamp) p.date.clone();
             this.title = new String(p.title);
+            p.readl.unlock();
         }
 
         public int compareTo(PostWrap p) {
@@ -646,15 +715,20 @@ public class ServerInternal {
                 Post post = posts.get(id); // we've already checked that posts.containsKey(id) == true
                 double reward = (Math.log(Math.max(upvotes - downvotes, 0) + 1) + Math.log(wrapper.sum + 1))
                         / (rewardPerformedIterations - post.rewardIterationsOnCreation);
+
+                post.writel.lock();
                 post.reward += reward; // TODO is this somehow useful ...? probab not
+                post.writel.unlock();
 
                 SimpleDateFormat x = new SimpleDateFormat("yyyy-mm-dd hh:mm:ss");
                 // AUTHOR REWARD
                 if (users.containsKey(post.owner)) {
                     User owner = users.get(post.owner);
+                    owner.writel.lock();
                     owner.wallet += reward * authorPercentage;
                     owner.walletHistory.add(new Transaction(x.format(Timestamp.valueOf(LocalDateTime.now())),
                             Double.valueOf(reward * authorPercentage)));
+                    owner.writel.unlock();
                 }
 
                 // CURATOR REWARD
@@ -667,10 +741,13 @@ public class ServerInternal {
                         .collect(Collectors.toSet());
 
                 curators.stream().filter(u -> users.containsKey(u)).forEach((username) -> {
-                    users.get(username).wallet += reward / curators.size() * (1 - authorPercentage);
-                    users.get(username).walletHistory
+                    User user = users.get(username);
+                    user.writel.lock();
+                    user.wallet += reward / curators.size() * (1 - authorPercentage);
+                    user.walletHistory
                             .add(new Transaction(x.format(Timestamp.valueOf(LocalDateTime.now())),
                                     Double.valueOf(reward / curators.size() * (1 - authorPercentage))));
+                    user.writel.unlock();
 
                     // we must use curators.size to avoid counting duplicates
                 });
@@ -758,15 +835,6 @@ public class ServerInternal {
             posts = mapper.readValue(backupReader, new TypeReference<ConcurrentHashMap<Integer, Post>>() {
             });
             System.out.println("backup post effettuato");
-            // if (followersBackup.exists()) {
-            // backupReader = new BufferedReader(new
-            // FileReader(followersBackup));
-            // followers = mapper.readValue(backupReader,
-            // new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {
-            // });
-            // System.out.println("backup followers effettuato");
-            // }
-
             backupReader = new BufferedReader(new FileReader(tagsUsersBackup));
             tagsUsers = mapper.readValue(backupReader,
                     new TypeReference<ConcurrentHashMap<String, HashSet<String>>>() {

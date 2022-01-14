@@ -15,7 +15,7 @@
     "blog" : [ 0, 1, 2 ],
     "followers" : [ "u5", "u2", "u4" ],
     "following" : [ "u2", "u3" ],
-    "wallet" : 1.1560270872015952,
+    "wallet" : 1.1581740032475774,
     "walletHistory" : [ {
       "ts" : "2022-41-14 04:41:21",
       "value" : 0.8693162079699814
@@ -25,6 +25,9 @@
     }, {
       "ts" : "2022-29-14 06:29:29",
       "value" : 0.04410936603563288
+    }, {
+      "ts" : "2022-07-14 08:07:20",
+      "value" : 0.0021469160459821313
     } ],
     "tags" : [ "tag1", "tag2" ]
   },
@@ -33,7 +36,7 @@
     "password" : "2",
     "blog" : [ ],
     "followers" : [ "u1" ],
-    "following" : [ "u1", "u3" ],
+    "following" : [ "u1", "u3", "u4" ],
     "wallet" : 0.30915813566425915,
     "walletHistory" : [ {
       "ts" : "2022-41-14 04:41:21",
@@ -61,7 +64,7 @@
     "username" : "u4",
     "password" : "4",
     "blog" : [ ],
-    "followers" : [ ],
+    "followers" : [ "u2" ],
     "following" : [ "u1" ],
     "wallet" : 0.18628204456499606,
     "walletHistory" : [ {

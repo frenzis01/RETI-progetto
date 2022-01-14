@@ -11,10 +11,19 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @NoArgsConstructor
 public @Data class User implements Comparable<User>, Serializable {
+    @JsonIgnore ReadWriteLock lock = new ReentrantReadWriteLock();
+    @JsonIgnore Lock readl = lock.readLock();
+    @JsonIgnore Lock writel = lock.writeLock();
     String username;
     String password;
 
@@ -69,12 +78,13 @@ public @Data class User implements Comparable<User>, Serializable {
         return this.username.hashCode();
     }
 
-    // private static final SimpleDateFormat sdf1 = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss");
-
     public String walletHistoryToString() {
-        return walletHistory.stream()
+        readl.lock();
+        String ret = walletHistory.stream()
         .map( t -> t.ts + " : " + t.value.toString())
         .collect(Collectors.joining("\n"));
+        readl.unlock();
+        return ret;
     }
 
 }

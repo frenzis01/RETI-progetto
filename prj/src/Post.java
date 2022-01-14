@@ -7,9 +7,17 @@ import java.io.Serializable;
 import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @NoArgsConstructor
 public @Data class Post implements Comparable<Post>, Serializable {
+    @JsonIgnore ReadWriteLock lock = new ReentrantReadWriteLock();
+    @JsonIgnore Lock readl = lock.readLock();
+    @JsonIgnore Lock writel = lock.writeLock();
 
     int idPost;
     String owner;

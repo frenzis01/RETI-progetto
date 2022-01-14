@@ -5,12 +5,12 @@
     "title" : "p1",
     "content" : "Lorem ipsum",
     "date" : 1642174881721,
-    "upvote" : [ ],
+    "upvote" : [ "u2" ],
     "downvote" : [ ],
     "comments" : { },
     "rewiners" : [ ],
     "rewardIterationsOnCreation" : 0,
-    "reward" : 0.0
+    "reward" : 0.0030670229228316162
   },
   "1" : {
     "idPost" : 1,

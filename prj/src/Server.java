@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -119,6 +120,8 @@ class Server {
 
         try {
             tcpThread.join();
+            pool.shutdown();
+            pool.awaitTermination(5, TimeUnit.SECONDS);
             rewardThread.interrupt();
             // rewardThread.join(); //this is done by loggerThread
             loggerThread.interrupt();
@@ -206,7 +209,6 @@ class Server {
         answer[0].flip();
         if (toSend.hasRemaining()) {
             toSend.clear();
-            // NO synchronized HERE! already acquired lock in tcpThread
             synchronized (lock) {
                 c_channel.register(sel, SelectionKey.OP_READ);
                 sel.wakeup();
