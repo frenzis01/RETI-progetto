@@ -186,7 +186,7 @@ public class ServerInternal {
         HashSet<UserWrap> toRet = new HashSet<>();
         user.readl.lock();
         HashSet<String> following = new HashSet<String>(user.following);
-        user.readl.lock();
+        user.readl.unlock();
 
         for (String followed : following)
             toRet.add(new ServerInternal().new UserWrap(users.get(followed)));
@@ -328,7 +328,7 @@ public class ServerInternal {
     /**
      * Remove a post from winsome
      *
-     * @param idPost
+     * @param idPost   if negative, random published post
      * @param username
      * @return 0 success, 1 user isn't the post owner
      * @throws NotExistingUser
@@ -336,7 +336,17 @@ public class ServerInternal {
      */
     public static int deletePost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
-        Post p = checkPost(idPost);
+        Post p = null;
+
+        user.readl.lock();
+        if (idPost > 0) // user wants to delete a specific post
+            p = checkPost(idPost);
+        else    // user wants to delete one of his posts, but there might be none
+            p = posts.get(user.blog.stream().findFirst().orElse(-1));
+        user.readl.unlock();
+        
+        if (p == null)
+            throw new NotExistingPost();
         if (username.equals(p.owner)) {
             posts.remove(idPost);
             // We have to remove the post from owner's and rewiners's blog

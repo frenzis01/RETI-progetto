@@ -16,6 +16,8 @@ import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -33,8 +35,9 @@ public class Client {
     private ROCint stub = null;
 
     private ClientConfig config;
-    private MulticastSocket ms = null;
-
+    private MulticastSocket ms = null; // last active multicast socket
+    // private ConcurrentHashMap<MulticastSocket,Integer> map = new ConcurrentHashMap<MulticastSocket,Integer>();
+    private Set<MulticastSocket> socketsToBeClosed = ConcurrentHashMap.newKeySet();
     /**
      * Default constructor
      * 
@@ -89,8 +92,8 @@ public class Client {
         try (SocketChannel client = SocketChannel
                 .open(new InetSocketAddress(this.config.serverAddress, this.config.serverPort));) {
 
-            String[] commands = cliCommands.split("\\+");
-            int iCliCommands = 0;
+            String[] commands = cliCommands.split("\\+\\s*");
+            int iCliCommands = -1;
 
             // we'll use this to read from cmdline
             BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
@@ -102,8 +105,9 @@ public class Client {
 
 
             // Now the client is connected
-            while (!this.exit && iCliCommands < commands.length) {
+            while (!this.exit && iCliCommands < commands.length - 1) {
                 
+                iCliCommands = config.cli ? iCliCommands+1 : iCliCommands;
 
                 // get new request from commandline
                 String msg = config.cli ? commands[iCliCommands] : consoleReader.readLine().trim();
@@ -185,7 +189,6 @@ public class Client {
                     this.server.registerForCallback(stub);
                 }
 
-                iCliCommands = config.cli ? iCliCommands+1 : iCliCommands;
 
             }
 
@@ -194,6 +197,8 @@ public class Client {
                 server.unregisterForCallback(stub);
             if (ms != null)
                 this.ms.close(); // this will wake the sniffer thread
+            System.out.print("CLOSING SOCKETS\n");
+            socketsToBeClosed.forEach((s) -> { System.out.println(s.toString()); s.close(); });
             if (sniffer != null) {
                 try {
                     // sniffer.interrupt(); // not necessary
@@ -220,8 +225,9 @@ public class Client {
         return () -> {
             int port = Integer.parseInt(portStr);
             try {
-                this.ms = new MulticastSocket(port);
-                MulticastSocket myMCskt = this.ms; // this.ms might get overwritten in the meantime
+                
+                MulticastSocket myMCskt = this.ms = new MulticastSocket(port); // this.ms might get overwritten in the meantime
+                this.socketsToBeClosed.add(myMCskt);
                 // we must keep a reference
                 InetSocketAddress group = new InetSocketAddress(InetAddress.getByName(addr), port);
                 NetworkInterface netInt = NetworkInterface.getByName("wlan1");

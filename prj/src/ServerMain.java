@@ -13,7 +13,7 @@ public class ServerMain {
     public static void main(String args[]) {
         try {
 
-            // createStubs();
+            createStubs();
             // TCP server setup
             Server server = new Server("../serverConfig.json");
             server.start();
