@@ -1,9 +1,8 @@
-#!/bin/sh
 #!/bin/bash
 #TEST3 (aka stress test)
 BWHT="\033[1;37m"
 REG=$(tput sgr0)
-TIMER=300
+TIMER=30
 export BWHT
 
 #run server in background
@@ -11,7 +10,7 @@ javac -cp "../lib/*:../src:../out" -d "../out/" ../src/*.java ../src/exceptions/
 java -cp "../lib/*:../out" ServerMain &
 export S_PID=$!
 
-echo $BWHT "
+echo -e $BWHT "
 
     STARTING STRESS TEST
     10 Clients will run simultaneously without '-p' option for ${TIMER}s
@@ -21,7 +20,7 @@ echo $BWHT "
 
 #"cli" : "true" is a key value
 # it allows us to pass winsome cli commands through cli arguments
-echo "{
+echo -e "{
     \"registryAddress\" : \"127.0.0.1\",
     \"registryPort\" : \"1900\",
     \"serverPort\" : \"12345\",
@@ -35,16 +34,22 @@ sleep 2
 
 start=$SECONDS
 
-for i in {1..10}; do
+for i in {1..20}
+do
     ./spawnclients.sh &
 done
 
+echo -e $BWHT "
+    SLEEPING
+" $REG
+
 sleep ${TIMER}
 
-echo $BWHT "
+echo -e $BWHT "
     KILLING SERVER and SPAWNCLIENTS
 " $REG
 killall -9 spawnclients.sh > /dev/null 2>/dev/null
+# killall -9 spawnclients.sh | at now &> /dev/null
 kill -15 $S_PID
 # -9 == SIGKILL
 # -2 == SIGINT
@@ -53,7 +58,7 @@ duration=$(( SECONDS - start ))
 
 sleep 2
 
-echo $BWHT "
+echo -e $BWHT "
 
     Well done! (${duration}s)
 

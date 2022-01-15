@@ -159,7 +159,7 @@ class Server {
             try {
                 SocketChannel c_channel = (SocketChannel) k.channel();
                 String res = parseRequest(req, c_channel.getRemoteAddress().toString());
-                p("------- Evaluated req by" + c_channel.getRemoteAddress().toString() + "\n | => " + req +
+                p("------- Evaluated req by" + c_channel.getRemoteAddress().toString() + " by Thread: " + Thread.currentThread().getName() + "\n | => " + req +
                         "\n | Result => \n" + res + "\n-----------------------");
 
                 ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);

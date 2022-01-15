@@ -4,16 +4,20 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
+import java.net.ConnectException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.rmi.ConnectIOException;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
+import java.rmi.UnmarshalException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Set;
@@ -30,7 +34,8 @@ public class Client {
     private volatile boolean logged = false;
     // setted to false as default value to avoid annoying notification messages
     // while typing commands
-    private volatile boolean printEnable = false;
+    private volatile boolean udpPrintEnable = false;
+    private static boolean printEnable = false;
     private ROSint server;
     private ROCint stub = null;
 
@@ -60,18 +65,19 @@ public class Client {
                 e.printStackTrace();
             }
 
-            System.out.println("Configuration file read.\nConfiguring the client as follows:");
+            print("Configuration file read.\nConfiguring the client as follows:");
             for (Field f : clientConfig.getClass().getDeclaredFields()) {
 
                 try {
-                    System.out.println(" " + f.getName() + " : " + f.get(clientConfig));
+                    print(" " + f.getName() + " : " + f.get(clientConfig));
                 } catch (IllegalArgumentException | IllegalAccessException e) {
                     e.printStackTrace();
                 }
             }
-            System.out.println();
+            print("");
         } else
-            System.out.println("Config file not found. Using default values.");
+            print("Config file not found. Using default values.");
+        printEnable = !clientConfig.cli;
         return clientConfig;
     }
 
@@ -81,7 +87,7 @@ public class Client {
             this.server = (ROSint) LocateRegistry.getRegistry(this.config.registryAddress, this.config.registryPort)
                     .lookup(this.config.serverNameLookup);
         } catch (NotBoundException | RemoteException e) {
-            System.out.println("Could not locate registry");
+            print("Could not locate registry");
             return;
         }
 
@@ -98,7 +104,7 @@ public class Client {
             // we'll use this to read from cmdline
             BufferedReader consoleReader = new BufferedReader(new InputStreamReader(System.in));
 
-            System.out.println(
+            print(
                     "Connected to the Server\n" +
                             "Type 'exit' to close application.\n" +
                             "Type 'udp print' to enable/disable notifications printing");
@@ -114,9 +120,9 @@ public class Client {
 
                 // "Rewards calculated" print enable/disable
                 if (Pattern.matches("^udp\\s+print\\s*$", msg)) {
-                    printEnable = !printEnable;
-                    System.out.println(
-                            "Reward calculation notification is now " + (printEnable ? "enabled" : "disabled"));
+                    udpPrintEnable = !udpPrintEnable;
+                    print(
+                            "Reward calculation notification is now " + (udpPrintEnable ? "enabled" : "disabled"));
                     continue;
                 }
 
@@ -124,16 +130,16 @@ public class Client {
                 if (Pattern.matches("^register\\s+\\S+\\s+\\S+\\s+.*\\s*$", msg)) {
                     String[] param = msg.split("\\s+", 4);
                     try {
-                        System.out.println(this.server.register(param[1], param[2], param.length == 4 ? param[3] : ""));
+                        print("" + this.server.register(param[1], param[2], param.length == 4 ? param[3] : ""));
                     } catch (ExistingUser e) {
-                        System.out.println("Cannot register: username already taken");
+                        print("Cannot register: username already taken");
                     }
                     continue;
                 }
 
                 // login
                 if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", msg) && logged) {
-                    System.out.println("User already logged in. Execute 'logout' first");
+                    print("User already logged in. Execute 'logout' first");
                     continue;
                 }
 
@@ -164,16 +170,26 @@ public class Client {
                         sniffer.interrupt();
                         // sniffer = null;
                         server.unregisterForCallback(stub);
-                        System.out.println("Logged out");
+                        print("Logged out");
                         logged = false;
                     } else
-                        System.out.println("No user logged");
+                        print("No user logged");
                     continue;
                 }
 
+                String response = "";
+
                 // Server's Response
-                String response = Util.readMsgFromSocket(client);
-                System.out.println(response);
+                try {
+                    response = Util.readMsgFromSocket(client);
+                    print(response);
+                    
+                } catch (Exception e) {
+                    print("Server closed the connection");
+                    this.exit = true;
+                    client.close();
+                    continue;
+                }
 
                 // login
                 if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", msg) &&
@@ -192,13 +208,13 @@ public class Client {
 
             }
 
-            System.out.println("Exiting");
+            print("Exiting");
             if (stub != null)
                 server.unregisterForCallback(stub);
             if (ms != null)
                 this.ms.close(); // this will wake the sniffer thread
-            System.out.print("CLOSING SOCKETS\n");
-            socketsToBeClosed.forEach((s) -> { System.out.println(s.toString()); s.close(); });
+            print("CLOSING SOCKETS");
+            socketsToBeClosed.forEach((s) -> { print(s.toString()); s.close(); });
             if (sniffer != null) {
                 try {
                     // sniffer.interrupt(); // not necessary
@@ -209,13 +225,17 @@ public class Client {
             }
 
             // Set<Thread> threadSet = Thread.getAllStackTraces().keySet();
-            // threadSet.forEach((t) -> {System.out.println(t.getId() + " | " + t.getName()
+            // threadSet.forEach((t) -> {print(t.getId() + " | " + t.getName()
             // + " | " + t.toString()) ;});
             // Some RMI threads seem to be keeping the JVM on, we have to shutdown manually
             System.exit(0);
             return;
-        } catch (IOException e) {
-            System.out.println("|ERROR Some error in the connection with the server");
+        }
+        catch (ConnectException | ConnectIOException | UnmarshalException e){
+            print("Could not connect to server");
+        } 
+        catch (IOException e) {
+            print("|ERROR Some error in the connection with the server");
             e.printStackTrace();
         }
         return;
@@ -249,8 +269,8 @@ public class Client {
 
                     if (Thread.currentThread().isInterrupted())
                         break;
-                    if (printEnable)
-                        System.out.println(new String(dp.getData()));
+                    if (udpPrintEnable)
+                        print(new String(dp.getData()));
                 }
                 myMCskt.leaveGroup(group, netInt);
                 myMCskt.close();
@@ -258,16 +278,21 @@ public class Client {
                 return;
             } catch (SocketException e) {
                 if (!this.exit)
-                    System.out.println("|ERROR: snifferThread MulticastSocket closed");
+                    print("|ERROR: snifferThread MulticastSocket closed");
                 // e.printStackTrace();
                 return;
             } catch (IOException e) {
-                System.out.println("|ERROR: snifferThread");
+                print("|ERROR: snifferThread");
                 e.printStackTrace();
             }
-            System.out.println("Never printed");
+            print("Never printed");
             return;
         };
+    }
+
+    private static void print(String s){
+        if (printEnable)
+            print(s);
     }
 
 }
