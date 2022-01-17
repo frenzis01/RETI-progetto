@@ -13,6 +13,7 @@ import java.net.UnknownHostException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.Pipe;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -20,10 +21,13 @@ import java.nio.channels.SocketChannel;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -46,6 +50,9 @@ class Server {
     private ThreadPoolExecutor pool;
     private Object lock = new Object();
     private static Object stdOutlock = new Object();
+
+    private Pipe pipe = null;
+    private ConcurrentLinkedQueue<RegisterParams> toRegister = new ConcurrentLinkedQueue<RegisterParams>();
 
     /**
      *
@@ -88,8 +95,14 @@ class Server {
      * avvia l'esecuzione del server
      */
     public void start() throws RemoteException {
-        // config already read by constructor
 
+        try {
+            pipe = Pipe.open();
+        } catch (IOException e1) {
+            e1.printStackTrace();
+        }
+
+        // config already read by constructor
         // RESTORE BACKUP
         ServerInternal.restoreBackup();
 
@@ -177,15 +190,13 @@ class Server {
 
                 ByteBuffer[] atc = { length, message };
 
-                synchronized (lock) {
-                    // sel.wakeup();
+                // if (c_channel.isOpen()) {
+                // c_channel.register(sel, SelectionKey.OP_WRITE, atc);
+                // }
 
-                    if (c_channel.isOpen()) {
-                        c_channel.register(sel, SelectionKey.OP_WRITE, atc);
-                    }
-                    sel.wakeup();
-
-                }
+                toRegister.add(new RegisterParams(c_channel, atc));
+                var token = ByteBuffer.allocateDirect(1);
+                this.pipe.sink().write(token);
 
             } catch (ClosedChannelException e) {
                 try {
@@ -198,6 +209,16 @@ class Server {
                 e.printStackTrace();
             }
         };
+    }
+
+    private class RegisterParams {
+        SocketChannel c;
+        ByteBuffer[] atc;
+
+        public RegisterParams(SocketChannel c, ByteBuffer[] atc) {
+            this.c = c;
+            this.atc = atc.clone();
+        }
     }
 
     /**
@@ -218,11 +239,8 @@ class Server {
         answer[0].flip();
         if (toSend.hasRemaining()) {
             toSend.clear();
-            synchronized (lock) {
-                c_channel.register(sel, SelectionKey.OP_READ);
-                sel.wakeup();
-            }
-
+            c_channel.register(sel, SelectionKey.OP_READ);
+            sel.wakeup();
         }
 
     }
@@ -484,8 +502,12 @@ class Server {
                 ServerSocketChannel s_channel = ServerSocketChannel.open();
                 s_channel.socket().bind(new InetSocketAddress(this.config.tcpPort));
                 s_channel.configureBlocking(false); // non-blocking policy
+
                 sel = Selector.open();
                 s_channel.register(sel, SelectionKey.OP_ACCEPT);
+
+                pipe.source().configureBlocking(false);
+                pipe.source().register(sel, SelectionKey.OP_READ);
 
                 // Server is running
                 System.out.printf("\t...waiting %d\n", this.config.tcpPort);
@@ -501,7 +523,12 @@ class Server {
                         iter.remove(); // important step
 
                         try {
-                            if (key.isAcceptable()) {
+                            if (key.channel() == pipe.source()) {
+                                var token = ByteBuffer.allocate(1);
+                                pipe.source().read(token);
+                                RegisterParams rp = toRegister.remove();
+                                rp.c.register(sel, SelectionKey.OP_WRITE, rp.atc);
+                            } else if (key.isAcceptable()) {
                                 // we have to create a SocketChannel for the new client
                                 ServerSocketChannel server = (ServerSocketChannel) key.channel();
                                 SocketChannel c_channel = server.accept(); // non-blocking client channel
@@ -525,9 +552,6 @@ class Server {
                                     "CLIENT DISCONNECTED: " + ((SocketChannel) key.channel()).getRemoteAddress());
                             clientExitHandler(key);
                         }
-                    }
-
-                    synchronized (lock) {
                     }
                 }
             } catch (IOException e) {
