@@ -2,7 +2,7 @@
 #TEST3 (aka stress test)
 BWHT="\033[1;37m"
 REG=$(tput sgr0)
-TIMER=30
+TIMER=40
 export BWHT
 
 #run server in background
@@ -48,8 +48,8 @@ sleep ${TIMER}
 echo -e $BWHT "
     KILLING SERVER and SPAWNCLIENTS
 " $REG
-killall -9 spawnclients.sh > /dev/null 2>/dev/null
-# killall -9 spawnclients.sh | at now &> /dev/null
+# killall -9 spawnclients.sh > /dev/null 2>/dev/null
+killall -9 spawnclients.sh | at now &> /dev/null
 kill -15 $S_PID
 # -9 == SIGKILL
 # -2 == SIGINT

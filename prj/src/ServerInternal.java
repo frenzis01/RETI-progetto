@@ -25,8 +25,8 @@ import exceptions.NotExistingUser;
 
 public class ServerInternal {
 
-    private static volatile int idPostCounter = 0; // will write this in a json file
-    private static volatile int rewardPerformedIterations = 0; // will write this in a json file
+    private static int idPostCounter = 0; // will write this in a json file
+    private static int rewardPerformedIterations = 0; // will write this in a json file
 
     private static ConcurrentHashMap<String, User> users = new ConcurrentHashMap<>();
     private static ConcurrentHashMap<String, HashSet<String>> tagsUsers = new ConcurrentHashMap<>();
@@ -40,6 +40,7 @@ public class ServerInternal {
     // author
 
     private static double authorPercentage = 0.7;
+    private static volatile double btcRate = 1.0;
 
     // init to default values
     private static File usersBackup = new File("../bkp/users.json");
@@ -97,7 +98,7 @@ public class ServerInternal {
         ServerInternal.tagsUsers.get(tag).add(username);
     }
 
-    public static int getIdPostCounter() {
+    public static synchronized int getIdPostCounter() {
         return idPostCounter++;
     }
 
@@ -330,7 +331,7 @@ public class ServerInternal {
      *
      * @param idPost   if negative, random published post
      * @param username
-     * @return 0 success, 1 user isn't the post owner
+     * @return id of the removed post success, -1 user isn't the post owner
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -341,17 +342,19 @@ public class ServerInternal {
         user.readl.lock();
         if (idPost > 0) // user wants to delete a specific post
             p = checkPost(idPost);
-        else    // user wants to delete one of his posts, but there might be none
+        else // user wants to delete one of his posts, but there might be none
             p = posts.get(user.blog.stream().findFirst().orElse(-1));
         user.readl.unlock();
-        
+
         if (p == null)
             throw new NotExistingPost();
         if (username.equals(p.owner)) {
-            posts.remove(idPost);
+            int id = p.idPost; // idPost might be negative, thus not representative of the actual id of the
+                               // post that is going to removed
+            posts.remove(id);
             // We have to remove the post from owner's and rewiners's blog
             user.writel.lock();
-            user.blog.remove(idPost);
+            user.blog.remove(id);
             user.writel.unlock();
 
             p.readl.lock();
@@ -361,12 +364,12 @@ public class ServerInternal {
             rewiners.forEach((String name) -> {
                 User rewiner = users.get(name);
                 rewiner.writel.lock();
-                users.get(name).blog.remove(idPost);
+                users.get(name).blog.remove(id);
                 rewiner.writel.unlock();
             });
-            return 0;
+            return id;
         }
-        return 1; // the client isn't the owner
+        return -1; // the client isn't the owner
     }
 
     ;
@@ -488,32 +491,7 @@ public class ServerInternal {
         u.readl.lock();
         double toRet = u.wallet;
         u.readl.unlock();
-        if (toRet != 0.0) {
-
-            try {
-                URL url = new URL("https://www.random.org/decimal-fractions/?num=1&dec=10&col=1&format=plain&rnd=new");
-                HttpURLConnection con = (HttpURLConnection) url.openConnection();
-                con.setRequestMethod("GET");
-
-                if (con.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(con.getInputStream()));
-
-                    String inputLine = "";
-                    StringBuffer res = new StringBuffer();
-
-                    while ((inputLine = reader.readLine()) != null) {
-                        res.append(inputLine);
-                    }
-                    reader.close();
-
-                    toRet *= Double.parseDouble(res.toString());
-                }
-            } catch (Exception e) {
-                toRet = -1.0;
-                System.out.println("|ERROR connecting to random.org");
-                e.printStackTrace();
-            }
-        }
+        toRet *= btcRate; // calculated asynchronously
         return toRet;
     };
 
@@ -686,7 +664,8 @@ public class ServerInternal {
      * {reward algorithm iterations at post's creation}
      */
     public static void rewardAlgorithm() {
-        rewardPerformedIterations++;
+        
+        incrementRewardIterations();
         // get all the modified posts since the last time the algorithm got executed
         // we will empty the three Collections once we're done evaluating
         HashSet<Integer> modifiedPosts = new HashSet<>();
@@ -770,8 +749,37 @@ public class ServerInternal {
         });
     }
 
-    public static int getRewardIterations() {
+    public static synchronized int getRewardIterations() {
         return ServerInternal.rewardPerformedIterations;
+    }
+
+    private static synchronized void incrementRewardIterations() {
+        ServerInternal.rewardPerformedIterations++;
+    }
+
+    public static void setBtcRate () {
+        try {
+            URL url = new URL("https://www.random.org/decimal-fractions/?num=1&dec=10&col=1&format=plain&rnd=new");
+            HttpURLConnection con = (HttpURLConnection) url.openConnection();
+            con.setRequestMethod("GET");
+
+            if (con.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(con.getInputStream()));
+
+                String inputLine = "";
+                StringBuffer res = new StringBuffer();
+
+                while ((inputLine = reader.readLine()) != null) {
+                    res.append(inputLine);
+                }
+                reader.close();
+
+                btcRate = Double.parseDouble(res.toString());
+            }
+        } catch (Exception e) {
+            System.out.println("|ERROR while connecting to random.org");
+            e.printStackTrace();
+        }
     }
 
     // JSON BACKUP

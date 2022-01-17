@@ -6,7 +6,7 @@ public class ClientMain {
             // TCP communication
             Client client = new Client("../clientConfig.json");
             client.start(String.join(" ",args));
-
+            System.exit(0);
             return;
         
         }

@@ -228,10 +228,9 @@ public class Client {
             // threadSet.forEach((t) -> {print(t.getId() + " | " + t.getName()
             // + " | " + t.toString()) ;});
             // Some RMI threads seem to be keeping the JVM on, we have to shutdown manually
-            System.exit(0);
             return;
         }
-        catch (ConnectException | ConnectIOException | UnmarshalException e){
+        catch (ConnectException | java.rmi.ConnectException | ConnectIOException | UnmarshalException e){
             print("Could not connect to server");
         } 
         catch (IOException e) {

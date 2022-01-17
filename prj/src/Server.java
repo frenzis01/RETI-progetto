@@ -102,6 +102,10 @@ class Server {
         Thread loggerThread = new Thread(this.loggerDaemon(config.logTimeout, rewardThread));
         loggerThread.start();
 
+        // Start btcRateThread
+        Thread btcRateThread = new Thread(this.bitcoinRateGetter(config.btcTimeout));
+        btcRateThread.start();
+
         // Start signal handler
         Runtime.getRuntime().addShutdownHook(new Thread(this.signalHandlerFun(Thread.currentThread())));
 
@@ -122,6 +126,8 @@ class Server {
             tcpThread.join();
             pool.shutdown();
             pool.awaitTermination(5, TimeUnit.SECONDS);
+            btcRateThread.interrupt();
+            btcRateThread.join();
             rewardThread.interrupt();
             // rewardThread.join(); //this is done by loggerThread
             loggerThread.interrupt();
@@ -159,7 +165,8 @@ class Server {
             try {
                 SocketChannel c_channel = (SocketChannel) k.channel();
                 String res = parseRequest(req, c_channel.getRemoteAddress().toString());
-                p("------- Evaluated req by" + c_channel.getRemoteAddress().toString() + " by Thread: " + Thread.currentThread().getName() + "\n | => " + req +
+                p("------- Evaluated req by" + c_channel.getRemoteAddress().toString() + " by Thread: "
+                        + Thread.currentThread().getName() + "\n | => " + req +
                         "\n | Result => \n" + res + "\n-----------------------");
 
                 ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
@@ -171,11 +178,13 @@ class Server {
                 ByteBuffer[] atc = { length, message };
 
                 synchronized (lock) {
+                    // sel.wakeup();
+
                     if (c_channel.isOpen()) {
                         c_channel.register(sel, SelectionKey.OP_WRITE, atc);
                     }
                     sel.wakeup();
-                    
+
                 }
 
             } catch (ClosedChannelException e) {
@@ -221,7 +230,7 @@ class Server {
     private void clientExitHandler(SelectionKey key) throws IOException {
         // if the client has disconnected c.getRemoteAddress returns null
         SocketChannel c = (SocketChannel) key.channel();
-        if (c.isOpen()){
+        if (c.isOpen()) {
             SocketAddress cAddr = c.getRemoteAddress();
             if (cAddr != null) // this seems always to be true
                 loggedUsers.remove(cAddr.toString());
@@ -312,12 +321,13 @@ class Server {
                     toRet = ServerInternal.postWrap2String(ServerInternal.showPost(Integer.parseInt(param[2]), u));
                 }
                 // delete post
-                else if (Pattern.matches("^delete\\s+post\\s+\\d+\\s*$", s)) {
+                else if (Pattern.matches("^delete\\s+post\\s+[+-]?\\d+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    if (ServerInternal.deletePost(Integer.parseInt(param[2]), u) == 1)
+                    int res = ServerInternal.deletePost(Integer.parseInt(param[2]), u);
+                    if (res == -1)
                         toRet = "Cannot delete a post which isn't owned by you";
                     else
-                        toRet = "Post " + param[2] + " deleted";
+                        toRet = "Post " + res + " deleted"; // param[2] negativo //TODO
                 }
                 // rewin post
                 else if (Pattern.matches("^rewin\\s+post\\s+\\d+\\s*$", s)) {
@@ -431,6 +441,20 @@ class Server {
             ServerInternal.write2json();
             p("Logger performed last backup");
             return;
+        };
+
+    }
+
+    private Runnable bitcoinRateGetter(long timeout) {
+        return () -> {
+            try {
+                while (!this.quit && !Thread.currentThread().isInterrupted()) {
+                    Thread.sleep(timeout);
+                    ServerInternal.setBtcRate();
+                }
+            } catch (InterruptedException e) {
+                p("bitcoin rate daemon stopped");
+            }
         };
 
     }

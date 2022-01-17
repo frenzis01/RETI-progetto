@@ -11,6 +11,7 @@ public @Data class ServerConfig {
     String backupDir = "../bkp/";
     long rewardTimeout = 10000;
     long logTimeout = 10000;
+    long btcTimeout = 5000;
     
     public ServerConfig() {
         super();
