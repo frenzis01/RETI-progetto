@@ -47,8 +47,7 @@ class Server {
                                                                                        // Username
     private volatile Selector sel = null;
     private ServerConfig config;
-    private ThreadPoolExecutor pool;
-    private Object lock = new Object();
+    private ThreadPoolExecutor workerPool;
     private static Object stdOutlock = new Object();
 
     private Pipe pipe = null;
@@ -130,15 +129,15 @@ class Server {
         // Now ready to handle RMI registration and followers's update notifications
 
         // TODO make this fixed?
-        this.pool = (ThreadPoolExecutor) Executors.newFixedThreadPool(5);
+        this.workerPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(5);
 
         Thread tcpThread = new Thread(this.selectorDaemon());
         tcpThread.start();
 
         try {
             tcpThread.join();
-            pool.shutdown();
-            pool.awaitTermination(5, TimeUnit.SECONDS);
+            workerPool.shutdown();
+            workerPool.awaitTermination(5, TimeUnit.SECONDS);
             btcRateThread.interrupt();
             btcRateThread.join();
             rewardThread.interrupt();
@@ -168,11 +167,17 @@ class Server {
             ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
             loggedUsers.remove(c_channel.getRemoteAddress().toString());
         } else {
-            this.pool.execute(this.requestHandler(req, key));
+            this.workerPool.execute(this.requestHandler(req, key));
         }
 
     }
 
+    /**
+     * Task assigned to worker threads.
+     * @param req request to be parsed and eventually evaluated
+     * @param k key assigned to the requesting client's channel
+     * @return
+     */
     private Runnable requestHandler(String req, SelectionKey k) {
         return () -> {
             try {
@@ -190,10 +195,7 @@ class Server {
 
                 ByteBuffer[] atc = { length, message };
 
-                // if (c_channel.isOpen()) {
-                // c_channel.register(sel, SelectionKey.OP_WRITE, atc);
-                // }
-
+                // c_channel.register() will be performed by selectorThread
                 toRegister.add(new RegisterParams(c_channel, atc));
                 var token = ByteBuffer.allocateDirect(1);
                 this.pipe.sink().write(token);
@@ -245,6 +247,9 @@ class Server {
 
     }
 
+    /**
+     * When a client calls exit or prematurely leaves
+     */
     private void clientExitHandler(SelectionKey key) throws IOException {
         // if the client has disconnected c.getRemoteAddress returns null
         SocketChannel c = (SocketChannel) key.channel();
@@ -492,6 +497,12 @@ class Server {
         };
     }
 
+    /**
+     * Handles TCP connections with clients using a NIO Selector. Uses a thread pool to evaluate requests.
+     * All register, read and write operations are performed by this thread; when a worker has done evaluating a request,
+     * adds the channel ready for OP_WRITE to a shared queue and notifies the selector through a pipe.
+     * @return
+     */
     private Runnable selectorDaemon() {
         return () -> {
 
@@ -506,6 +517,7 @@ class Server {
                 sel = Selector.open();
                 s_channel.register(sel, SelectionKey.OP_ACCEPT);
 
+                // add pipe workerPool->selectorDaemon to the selector
                 pipe.source().configureBlocking(false);
                 pipe.source().register(sel, SelectionKey.OP_READ);
 
@@ -523,10 +535,10 @@ class Server {
                         iter.remove(); // important step
 
                         try {
-                            if (key.channel() == pipe.source()) {
+                            if (key.channel() == pipe.source()) { // a channel needs to be registered
                                 var token = ByteBuffer.allocate(1);
-                                pipe.source().read(token);
-                                RegisterParams rp = toRegister.remove();
+                                pipe.source().read(token);  // consume token from pipe
+                                RegisterParams rp = toRegister.remove(); // get channel (and attachment) to be registered
                                 rp.c.register(sel, SelectionKey.OP_WRITE, rp.atc);
                             } else if (key.isAcceptable()) {
                                 // we have to create a SocketChannel for the new client
