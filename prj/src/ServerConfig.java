@@ -12,6 +12,7 @@ public @Data class ServerConfig {
     long rewardTimeout = 10000;
     long logTimeout = 10000;
     long btcTimeout = 5000;
+    int nworker = 5;
     
     public ServerConfig() {
         super();

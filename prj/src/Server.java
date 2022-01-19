@@ -62,34 +62,6 @@ class Server {
         ServerInternal.updateBackupDir(this.config.backupDir);
     }
 
-    public ServerConfig readConfigFile(String configFilePath) {
-        ServerConfig servConfig = new ServerConfig();
-        ObjectMapper mapper = new ObjectMapper();
-        File configFile = new File(configFilePath);
-        if (configFile.exists()) {
-            try {
-                BufferedReader usersReader = new BufferedReader(new FileReader(configFile));
-                servConfig = mapper.readValue(usersReader, new TypeReference<ServerConfig>() {
-                });
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-
-            System.out.println("Configuration file read.\nConfiguring the server as follows:");
-            for (Field f : servConfig.getClass().getDeclaredFields()) {
-
-                try {
-                    System.out.println(" " + f.getName() + " : " + f.get(servConfig));
-                } catch (IllegalArgumentException | IllegalAccessException e) {
-                    e.printStackTrace();
-                }
-            }
-            System.out.println();
-        } else
-            System.out.println("Config file not found. Using default values.");
-        return servConfig;
-    }
-
     /**
      * avvia l'esecuzione del server
      */
@@ -129,7 +101,7 @@ class Server {
         // Now ready to handle RMI registration and followers's update notifications
 
         // TODO make this fixed?
-        this.workerPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(5);
+        this.workerPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(this.config.nworker);
 
         Thread tcpThread = new Thread(this.selectorDaemon());
         tcpThread.start();
@@ -167,52 +139,58 @@ class Server {
             ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
             loggedUsers.remove(c_channel.getRemoteAddress().toString());
         } else {
-            this.workerPool.execute(this.requestHandler(req, key));
+            this.workerPool.execute(this.requestHandler(req, c_channel, c_channel.getRemoteAddress().toString()));
         }
 
     }
 
     /**
      * Task assigned to worker threads.
-     * @param req request to be parsed and eventually evaluated
-     * @param k key assigned to the requesting client's channel
+     * 
+     * @param req               request to be parsed and eventually evaluated
+     * @param c_channel         assigned to the requesting client's channel. This
+     *                          will be added to 'toRegister' when the worker has
+     *                          done evaluating the request
+     * @param c_channelToString result of c_channel.getRemoteAddress().toString(),
+     *                          not executed here to avoid throwing
+     *                          ClosedChannelException and running clientExitHandler
+     *                          from multiple threads. This param is needed only for
+     *                          printing to stdout purposes
      * @return
      */
-    private Runnable requestHandler(String req, SelectionKey k) {
+    private Runnable requestHandler(String req, SocketChannel c_channel, String c_channelToString) {
         return () -> {
+
+            String res = parseRequest(req, c_channelToString);
+            p("------- Evaluated req by" + c_channelToString + " by Thread: "
+                    + Thread.currentThread().getName() + "\n | => " + req +
+                    "\n | Result => \n" + res + "\n-----------------------");
+
+            ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
+            length.putInt(res.length());
+            length.flip();
+
+            ByteBuffer message = ByteBuffer.wrap(res.getBytes());
+
+            ByteBuffer[] atc = { length, message };
+
+            // c_channel.register() will be performed by selectorThread
+            toRegister.add(new RegisterParams(c_channel, atc));
+            var token = ByteBuffer.allocateDirect(1);
             try {
-                SocketChannel c_channel = (SocketChannel) k.channel();
-                String res = parseRequest(req, c_channel.getRemoteAddress().toString());
-                p("------- Evaluated req by" + c_channel.getRemoteAddress().toString() + " by Thread: "
-                        + Thread.currentThread().getName() + "\n | => " + req +
-                        "\n | Result => \n" + res + "\n-----------------------");
-
-                ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
-                length.putInt(res.length());
-                length.flip();
-
-                ByteBuffer message = ByteBuffer.wrap(res.getBytes());
-
-                ByteBuffer[] atc = { length, message };
-
-                // c_channel.register() will be performed by selectorThread
-                toRegister.add(new RegisterParams(c_channel, atc));
-                var token = ByteBuffer.allocateDirect(1);
                 this.pipe.sink().write(token);
-
-            } catch (ClosedChannelException e) {
-                try {
-                    clientExitHandler(k);
-                } catch (IOException e1) {
-                    // should (almost) never be thrown
-                    e1.printStackTrace();
-                }
-            } catch (IOException e) {
+            } catch (IOException e) { // almost never thrown
                 e.printStackTrace();
             }
+
         };
     }
 
+    /**
+     * Content type of the shared queue between workers and selectorDaemon, which
+     * uses this class to know when it has to call register(OP_WRITE) on a given
+     * channel
+     */
     private class RegisterParams {
         SocketChannel c;
         ByteBuffer[] atc;
@@ -224,13 +202,18 @@ class Server {
     }
 
     /**
-     * scrive il buffer sul canale del client
+     * Writes the content of key.attachment to the associated channel
      *
-     * @param key chiave di selezione
-     * @throws IOException se si verifica un errore di I/O
+     * @param key
+     * @throws IOException
      */
     private void sendResult(Selector sel, SelectionKey key) throws IOException {
         SocketChannel c_channel = (SocketChannel) key.channel();
+
+        /**
+         * key.attachment() contains the length of the message to be written and the
+         * message itself. We'll prepend the length.
+         */
         ByteBuffer[] answer = (ByteBuffer[]) key.attachment();
         ByteBuffer toSend = ByteBuffer.allocate(answer[0].remaining() + answer[1].remaining()).put(answer[0])
                 .put(answer[1]);
@@ -263,23 +246,31 @@ class Server {
         }
     }
 
-    private String parseRequest(String s, String k) {
+    /**
+     * Tries to match s with one of winsome's commands
+     * 
+     * @param s                request
+     * @param requestorAddress
+     * @return the response to be sent to the client
+     */
+    private String parseRequest(String s, String requestorAddress) {
         // login
         String toRet = "";
         if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", s)) {
             String param[] = s.split("\\s+");
             if (ServerInternal.login(param[1], param[2]) == 0) {
                 /**
+                 * Update the mapping for requestorAddress.
                  * This 'put' will overwrite the entry of a user who prematurely disconnected or
                  * logged out
                  */
-                loggedUsers.put(k, param[1]);
+                loggedUsers.put(requestorAddress, param[1]);
                 toRet = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
 
             } else
                 toRet = "Some error";
         } else {
-            String u = loggedUsers.get(k);
+            String u = loggedUsers.get(requestorAddress);
             try {
                 if (u == null) {
                     toRet = "Sign-in before sending requests";
@@ -293,13 +284,8 @@ class Server {
                     // the result sent through TCP isn't necessary, the client will get it by
                     // itself through RMI
                     // toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowers(u));
-                    toRet = "Followers listed above";
-                    try {
-                        serverRMI.update(u);
-                    } catch (RemoteException e) {
-                        e.printStackTrace();
-                        System.out.println("|ERROR updating followers list");
-                    }
+                    toRet = "Followers listed below:";
+                    // serverRMI.update(u); // should be unnecessary
                 }
                 // list following
                 else if (Pattern.matches("^list\\s+following\\s*$", s)) {
@@ -309,9 +295,10 @@ class Server {
                 else if (Pattern.matches("^follow\\s+\\S+\\s*$", s)) {
                     String param[] = s.split("\\s+");
                     int res = ServerInternal.followUser(param[1], u);
-                    if (res == 0)
+                    if (res == 0) {
                         toRet = "Now following \"" + param[1] + "\"";
-                    else if (res == 1)
+                        serverRMI.update(param[1],true);
+                    } else if (res == 1)
                         toRet = "Already following \"" + param[1] + "\"";
                     else
                         toRet = "Can't follow yourself";
@@ -319,9 +306,10 @@ class Server {
                 // unfollow user
                 else if (Pattern.matches("^unfollow\\s+\\S+\\s*$", s)) {
                     String param[] = s.split("\\s+");
-                    if (ServerInternal.unfollowUser(param[1], u) == 0)
+                    if (ServerInternal.unfollowUser(param[1], u) == 0) {
                         toRet = "Now unfollowing \"" + param[1] + "\"";
-                    else
+                        serverRMI.update(param[1],true);
+                    } else
                         toRet = "Already not following \"" + param[1] + "\"";
                 }
                 // view blog
@@ -396,6 +384,9 @@ class Server {
                 toRet = "User not found";
             } catch (NotExistingPost e) {
                 toRet = "Post not found";
+            } catch (RemoteException e) {
+                e.printStackTrace();
+                System.out.println("|ERROR updating followers list");
             }
         }
 
@@ -439,6 +430,13 @@ class Server {
         };
     }
 
+    /**
+     * Periodically creates the backup of the internal state of winsome
+     * 
+     * @param timeout
+     * @param rewardThread
+     * @return
+     */
     private Runnable loggerDaemon(long timeout, Thread rewardThread) {
         return () -> {
             while (!this.quit && !Thread.currentThread().isInterrupted()) {
@@ -468,6 +466,13 @@ class Server {
 
     }
 
+    /**
+     * This thread will periodically update the conversion rate from wincoin to
+     * bitcoin
+     * 
+     * @param timeout
+     * @return
+     */
     private Runnable bitcoinRateGetter(long timeout) {
         return () -> {
             try {
@@ -482,6 +487,12 @@ class Server {
 
     }
 
+    /**
+     * Used to clean exit after Ctrl+C
+     * 
+     * @param mainThread
+     * @return
+     */
     private Runnable signalHandlerFun(Thread mainThread) {
         return () -> {
             System.out.println("SIGINT | SIGTERM received => exiting...");
@@ -498,9 +509,13 @@ class Server {
     }
 
     /**
-     * Handles TCP connections with clients using a NIO Selector. Uses a thread pool to evaluate requests.
-     * All register, read and write operations are performed by this thread; when a worker has done evaluating a request,
-     * adds the channel ready for OP_WRITE to a shared queue and notifies the selector through a pipe.
+     * Handles TCP connections with clients using a NIO Selector. Uses a thread pool
+     * to evaluate requests.
+     * All register, read and write operations are performed by this thread; when a
+     * worker has done evaluating a request,
+     * adds the channel ready for OP_WRITE to a shared queue and notifies the
+     * selector through a pipe.
+     * 
      * @return
      */
     private Runnable selectorDaemon() {
@@ -537,8 +552,9 @@ class Server {
                         try {
                             if (key.channel() == pipe.source()) { // a channel needs to be registered
                                 var token = ByteBuffer.allocate(1);
-                                pipe.source().read(token);  // consume token from pipe
-                                RegisterParams rp = toRegister.remove(); // get channel (and attachment) to be registered
+                                pipe.source().read(token); // consume token from pipe
+                                RegisterParams rp = toRegister.remove(); // get channel (and attachment) to be
+                                                                         // registered
                                 rp.c.register(sel, SelectionKey.OP_WRITE, rp.atc);
                             } else if (key.isAcceptable()) {
                                 // we have to create a SocketChannel for the new client
@@ -571,6 +587,34 @@ class Server {
             }
             return;
         };
+    }
+
+    public ServerConfig readConfigFile(String configFilePath) {
+        ServerConfig servConfig = new ServerConfig();
+        ObjectMapper mapper = new ObjectMapper();
+        File configFile = new File(configFilePath);
+        if (configFile.exists()) {
+            try {
+                BufferedReader usersReader = new BufferedReader(new FileReader(configFile));
+                servConfig = mapper.readValue(usersReader, new TypeReference<ServerConfig>() {
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            System.out.println("Configuration file read.\nConfiguring the server as follows:");
+            for (Field f : servConfig.getClass().getDeclaredFields()) {
+
+                try {
+                    System.out.println(" " + f.getName() + " : " + f.get(servConfig));
+                } catch (IllegalArgumentException | IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
+            System.out.println();
+        } else
+            System.out.println("Config file not found. Using default values.");
+        return servConfig;
     }
 
     private static void p(String s) {

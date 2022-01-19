@@ -34,10 +34,12 @@ public class Client {
     private volatile boolean logged = false;
     // setted to false as default value to avoid annoying notification messages
     // while typing commands
-    private volatile boolean udpPrintEnable = false;
+    private volatile boolean notifyPrintEnable = false;
     private static boolean printEnable = false;
     private ROSint server;
     private ROCint stub = null;
+    private ROCimp stubImp = null;
+    
 
     private ClientConfig config;
     private MulticastSocket ms = null; // last active multicast socket
@@ -107,7 +109,7 @@ public class Client {
             print(
                     "Connected to the Server\n" +
                             "Type 'exit' to close application.\n" +
-                            "Type 'udp print' to enable/disable notifications printing");
+                            "Type 'notif print' to enable/disable notifications printing");
 
 
             // Now the client is connected
@@ -119,10 +121,10 @@ public class Client {
                 String msg = config.cli ? commands[iCliCommands] : consoleReader.readLine().trim();
 
                 // "Rewards calculated" print enable/disable
-                if (Pattern.matches("^udp\\s+print\\s*$", msg)) {
-                    udpPrintEnable = !udpPrintEnable;
+                if (Pattern.matches("^notif\\s+print\\s*$", msg)) {
+                    notifyPrintEnable = !notifyPrintEnable;
                     print(
-                            "Reward calculation notification is now " + (udpPrintEnable ? "enabled" : "disabled"));
+                            "Reward calculation notification is now " + (notifyPrintEnable ? "enabled" : "disabled"));
                     continue;
                 }
 
@@ -191,6 +193,10 @@ public class Client {
                     continue;
                 }
 
+                if (Pattern.matches("^Followers\\slisted\\sbelow:$",response))
+                    stubImp.followers.forEach((u) -> System.out.println(" " + u));
+
+
                 // login
                 if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", msg) &&
                         Pattern.matches("^-Successfully\\slogged\\sin:\\s+\\S+\\s+\\d+\\s*$", response)) {
@@ -201,7 +207,8 @@ public class Client {
                     sniffer.start();
 
                     // we must register for callback to get the logged user's followers
-                    stub = (ROCint) UnicastRemoteObject.exportObject(new ROCimp(username), 0);
+                    stubImp = new ROCimp(username,notifyPrintEnable);
+                    stub = (ROCint) UnicastRemoteObject.exportObject(stubImp, 0);
                     this.server.registerForCallback(stub);
                 }
 
@@ -268,7 +275,7 @@ public class Client {
 
                     if (Thread.currentThread().isInterrupted())
                         break;
-                    if (udpPrintEnable)
+                    if (notifyPrintEnable)
                         print(new String(dp.getData()));
                 }
                 myMCskt.leaveGroup(group, netInt);
@@ -291,7 +298,7 @@ public class Client {
 
     private static void print(String s){
         if (printEnable)
-            print(s);
+            System.out.println(s);
     }
 
 }

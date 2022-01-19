@@ -2,15 +2,16 @@ import java.rmi.RemoteException;
 import java.rmi.server.RemoteServer;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import exceptions.ExistingUser;
 
 public class ROSimp extends RemoteServer implements ROSint {
-    private HashMap<String,ROCint> loggedUsers;
+    private ConcurrentHashMap<String,ROCint> loggedUsers;
     public ROSimp () {
         super();
-        loggedUsers = new HashMap<>();
+        loggedUsers = new ConcurrentHashMap<>();
     }
 
     public int register(String username, String password, String tags) throws RemoteException, ExistingUser {
@@ -31,6 +32,7 @@ public class ROSimp extends RemoteServer implements ROSint {
         if (!loggedUsers.containsValue(ClientInterface)) {
             loggedUsers.put(ClientInterface.name(), ClientInterface);
             System.out.println("New client registered.");
+            this.update(ClientInterface.name(), true);
         }
     }
 
@@ -45,16 +47,16 @@ public class ROSimp extends RemoteServer implements ROSint {
     /*
      * notifica di una modifica (follower in più o in meno) ai follower di 'followed'
      */
-    public synchronized void update(String followed) throws RemoteException {
+    public synchronized void update(String followed, boolean notFirstUpdate) throws RemoteException {
         // System.out.println("Callback to -> " + followed);
         if (this.loggedUsers.containsKey(followed)) {
+            // the client still might exit during the execution of this block
             this.loggedUsers.get(followed).
                 newFollowers(ServerInternal.getFollowers(followed)
                 .stream()
                 .map( u -> u.toString())
-                .collect(Collectors.toCollection(HashSet::new)));
-            ServerInternal.getFollowers(followed).forEach((u) -> System.out.println(" " + u));
-            // TODO send users + tags
+                .collect(Collectors.toCollection(HashSet::new)), notFirstUpdate);
+            // ServerInternal.getFollowers(followed).forEach((u) -> System.out.println(" " + u));
         }
         // System.out.println("Callback to -> " + followed + " completed");
     }

@@ -8,7 +8,7 @@ public interface ROCint extends Remote {
      * @param users updated set of followers
      * @throws RemoteException
      */
-    public void newFollowers (HashSet<String> users) throws RemoteException;
+    public void newFollowers (HashSet<String> users, boolean shouldPrint) throws RemoteException;
     /**
      * Retrieve a logged user's name. Useful when the server has to send a notification
      * to a particular user regarding its followers
