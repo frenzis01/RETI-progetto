@@ -13,7 +13,7 @@ export S_PID=$!
 echo -e $BWHT "
 
     STARTING STRESS TEST
-    10 Clients will run simultaneously without '-p' option for ${TIMER}s
+    20 Clients will run simultaneously without printing anything for ${TIMER}s
     Server PID = $S_PID
 
 " $REG

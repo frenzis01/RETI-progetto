@@ -60,6 +60,7 @@ class Server {
     public Server(String configFilePath) {
         this.config = readConfigFile(configFilePath);
         ServerInternal.updateBackupDir(this.config.backupDir);
+        ServerInternal.setAuthorPercentage(this.config.authorPercentage);
     }
 
     /**
@@ -259,16 +260,23 @@ class Server {
         if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", s)) {
             String param[] = s.split("\\s+");
             if (ServerInternal.login(param[1], param[2]) == 0) {
-                /**
-                 * Update the mapping for requestorAddress.
-                 * This 'put' will overwrite the entry of a user who prematurely disconnected or
-                 * logged out
-                 */
-                loggedUsers.put(requestorAddress, param[1]);
-                toRet = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
+                var wrapper = new Object() {
+                    String s = null;
+                };
+                loggedUsers.compute(requestorAddress, (k, v) -> {
+                    if(loggedUsers.containsValue(param[1])){
+                        wrapper.s ="The same user is already logged in from another address";
+                        return null;
+                    }
+                    else{
+                        wrapper.s = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
+                        return param[1];
+                    }
+                });
+                toRet = wrapper.s;
 
             } else
-                toRet = "Some error";
+                toRet = "Login error. Either username or password are wrong";
         } else {
             String u = loggedUsers.get(requestorAddress);
             try {
@@ -279,13 +287,9 @@ class Server {
                 else if (Pattern.matches("^list\\s+users\\s*$", s)) {
                     toRet = ServerInternal.userWrapSet2String(ServerInternal.listUsers(u));
                 }
-                // list followers
+                // list followers... never used
                 else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
-                    // the result sent through TCP isn't necessary, the client will get it by
-                    // itself through RMI
-                    // toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowers(u));
-                    toRet = "Followers listed below:";
-                    // serverRMI.update(u); // should be unnecessary
+                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowers(u));
                 }
                 // list following
                 else if (Pattern.matches("^list\\s+following\\s*$", s)) {
@@ -297,7 +301,7 @@ class Server {
                     int res = ServerInternal.followUser(param[1], u);
                     if (res == 0) {
                         toRet = "Now following \"" + param[1] + "\"";
-                        serverRMI.update(param[1],true);
+                        serverRMI.update(param[1], true);
                     } else if (res == 1)
                         toRet = "Already following \"" + param[1] + "\"";
                     else
@@ -308,7 +312,7 @@ class Server {
                     String param[] = s.split("\\s+");
                     if (ServerInternal.unfollowUser(param[1], u) == 0) {
                         toRet = "Now unfollowing \"" + param[1] + "\"";
-                        serverRMI.update(param[1],true);
+                        serverRMI.update(param[1], true);
                     } else
                         toRet = "Already not following \"" + param[1] + "\"";
                 }
@@ -361,12 +365,13 @@ class Server {
                         toRet = "Post " + param[2] + (vote >= 0 ? " upvoted" : " downvoted");
                 }
                 // add comment
-                else if (Pattern.matches("^comment\\s+\\d+\\s+\\S+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    if (ServerInternal.addComment(Integer.parseInt(param[1]), param[2], u) == 1)
+                else if (Pattern.matches("^comment\\s+\\d+\\s+\".+\"\\s*$", s)) {
+                    String id = s.split("\\s+")[1];
+                    String comment = s.substring(s.indexOf("\"") + 1, s.lastIndexOf("\""));
+                    if (ServerInternal.addComment(Integer.parseInt(id), comment, u) == 1)
                         toRet = "Cannot rate a post which isn't in your feed";
                     else
-                        toRet = "Comment added to post " + param[1];
+                        toRet = "Comment added to post " + id;
                 }
                 // get wallet
                 else if (Pattern.matches("^wallet\\s*$", s)) {

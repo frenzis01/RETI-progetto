@@ -39,12 +39,13 @@ public class Client {
     private ROSint server;
     private ROCint stub = null;
     private ROCimp stubImp = null;
-    
 
     private ClientConfig config;
     private MulticastSocket ms = null; // last active multicast socket
-    // private ConcurrentHashMap<MulticastSocket,Integer> map = new ConcurrentHashMap<MulticastSocket,Integer>();
+    // private ConcurrentHashMap<MulticastSocket,Integer> map = new
+    // ConcurrentHashMap<MulticastSocket,Integer>();
     private Set<MulticastSocket> socketsToBeClosed = ConcurrentHashMap.newKeySet();
+
     /**
      * Default constructor
      * 
@@ -108,17 +109,23 @@ public class Client {
 
             print(
                     "Connected to the Server\n" +
+                            "Type 'help' to display the complete commands list\n" +
                             "Type 'exit' to close application.\n" +
                             "Type 'notif print' to enable/disable notifications printing");
 
-
             // Now the client is connected
             while (!this.exit && iCliCommands < commands.length - 1) {
-                
-                iCliCommands = config.cli ? iCliCommands+1 : iCliCommands;
+
+                iCliCommands = config.cli ? iCliCommands + 1 : iCliCommands;
 
                 // get new request from commandline
                 String msg = config.cli ? commands[iCliCommands] : consoleReader.readLine().trim();
+
+                // display help
+                if (Pattern.matches("^help\\s*$", msg)) {
+                    print(usage());
+                    continue;
+                }
 
                 // "Rewards calculated" print enable/disable
                 if (Pattern.matches("^notif\\s+print\\s*$", msg)) {
@@ -153,6 +160,11 @@ public class Client {
                     continue;
                 }
 
+                if (Pattern.matches("^list\\s+followers\\s*$", msg)) {
+                    stubImp.followers.forEach((u) -> print(" " + u));
+                    continue;
+                }
+
                 // Generic request
                 // we'll write first the length of the request
                 ByteBuffer request = ByteBuffer.allocate(Integer.BYTES + msg.getBytes().length);
@@ -164,7 +176,6 @@ public class Client {
                 client.write(request);
                 request.clear();
                 readBuffer.clear();
-
 
                 // logout
                 if (Pattern.matches("^logout\\s*$", msg)) {
@@ -185,17 +196,13 @@ public class Client {
                 try {
                     response = Util.readMsgFromSocket(client);
                     print(response);
-                    
+
                 } catch (Exception e) {
                     print("Server closed the connection");
                     this.exit = true;
                     client.close();
                     continue;
                 }
-
-                if (Pattern.matches("^Followers\\slisted\\sbelow:$",response))
-                    stubImp.followers.forEach((u) -> System.out.println(" " + u));
-
 
                 // login
                 if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", msg) &&
@@ -207,11 +214,10 @@ public class Client {
                     sniffer.start();
 
                     // we must register for callback to get the logged user's followers
-                    stubImp = new ROCimp(username,notifyPrintEnable);
+                    stubImp = new ROCimp(username, notifyPrintEnable);
                     stub = (ROCint) UnicastRemoteObject.exportObject(stubImp, 0);
                     this.server.registerForCallback(stub);
                 }
-
 
             }
 
@@ -221,7 +227,10 @@ public class Client {
             if (ms != null)
                 this.ms.close(); // this will wake the sniffer thread
             print("CLOSING SOCKETS");
-            socketsToBeClosed.forEach((s) -> { print(s.toString()); s.close(); });
+            socketsToBeClosed.forEach((s) -> {
+                // print(s.toString());
+                s.close();
+            });
             if (sniffer != null) {
                 try {
                     // sniffer.interrupt(); // not necessary
@@ -236,11 +245,9 @@ public class Client {
             // + " | " + t.toString()) ;});
             // Some RMI threads seem to be keeping the JVM on, we have to shutdown manually
             return;
-        }
-        catch (ConnectException | java.rmi.ConnectException | ConnectIOException | UnmarshalException e){
+        } catch (ConnectException | java.rmi.ConnectException | ConnectIOException | UnmarshalException e) {
             print("Could not connect to server");
-        } 
-        catch (IOException e) {
+        } catch (IOException e) {
             print("|ERROR Some error in the connection with the server");
             e.printStackTrace();
         }
@@ -251,8 +258,9 @@ public class Client {
         return () -> {
             int port = Integer.parseInt(portStr);
             try {
-                
-                MulticastSocket myMCskt = this.ms = new MulticastSocket(port); // this.ms might get overwritten in the meantime
+
+                MulticastSocket myMCskt = this.ms = new MulticastSocket(port); // this.ms might get overwritten in the
+                                                                               // meantime
                 this.socketsToBeClosed.add(myMCskt);
                 // we must keep a reference
                 InetSocketAddress group = new InetSocketAddress(InetAddress.getByName(addr), port);
@@ -263,7 +271,7 @@ public class Client {
                 while (!this.exit && !Thread.currentThread().isInterrupted()) {
                     DatagramPacket dp = new DatagramPacket(buffer, buffer.length);
                     myMCskt.receive(dp); // blocking
-                    
+
                     // the only way to wake the Thread from myMCskt.receive would be to call
                     // myMCskt.close()
                     // on logout
@@ -296,9 +304,32 @@ public class Client {
         };
     }
 
-    private static void print(String s){
+    private static void print(String s) {
         if (printEnable)
             System.out.println(s);
     }
 
+    private static String usage() {
+        return "USAGE:" +
+                "\tnotif print\t(-> enables/disables followers and reward notifications)\n" +
+                "\texit\n" +
+                "\tregister <username> <password> <tags>\n" +
+                "\tlogin <username> <password>\n" +
+                "\tlogout\n" +
+                "\tlist users\n" +
+                "\tlist followers\n" +
+                "\tlist following\n" +
+                "\tfollow <username>\n" +
+                "\tunfollow <username>\n" +
+                "\tblog\n" +
+                "\tpost \"<title>\" \"<content\"\n" +
+                "\tshow feed\n" +
+                "\tshow post <id>\n" +
+                "\tdelete <idPost>\n" +
+                "\trewin <idPost>\n" +
+                "\trate <idPost> <vote>\n" +
+                "\tcomment <idPost> \"<comment>\"\n" +
+                "\twallet\n" +
+                "\twallet btc";
+    }
 }

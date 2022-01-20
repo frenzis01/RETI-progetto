@@ -39,7 +39,7 @@ public class ServerInternal {
     // we don't care to save here the comments's content, we only care about the
     // author
 
-    private static double authorPercentage = 0.7;
+    private static volatile double authorPercentage = 0.7;
     private static volatile double btcRate = 1.0;
 
     // init to default values
@@ -102,6 +102,10 @@ public class ServerInternal {
         return idPostCounter++;
     }
 
+    public static void setAuthorPercentage(double authorPercentage) {
+        ServerInternal.authorPercentage = authorPercentage;
+    }
+
     /**
      * @param username
      * @param password
@@ -159,6 +163,8 @@ public class ServerInternal {
     ;
 
     /**
+     * This isn't used
+     * 
      * @param username
      * @return the set of users who are following the requestor
      * @throws NotExistingUser
@@ -265,7 +271,9 @@ public class ServerInternal {
         user.readl.unlock();
 
         for (Integer idPost : blog) {
-            toRet.add(new ServerInternal().new PostWrap(ServerInternal.posts.get(idPost)));
+            Post p;
+            if ((p = posts.get(idPost)) != null)
+                toRet.add(new ServerInternal().new PostWrap(p));
         }
         return toRet;
     }
@@ -318,7 +326,9 @@ public class ServerInternal {
             followedUser.readl.unlock();
 
             blog.forEach((Integer p) -> {
-                toRet.add(new ServerInternal().new PostWrap(posts.get(p)));
+                Post post;
+                if ((post = posts.get(p)) != null)
+                    toRet.add(new ServerInternal().new PostWrap(post));
             });
         }
         return toRet;
@@ -329,47 +339,55 @@ public class ServerInternal {
     /**
      * Remove a post from winsome
      *
-     * @param idPost   if negative, random published post
+     * @param postID   if negative, random published post
      * @param username
      * @return id of the removed post success, -1 user isn't the post owner
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
-    public static int deletePost(int idPost, String username) throws NotExistingUser, NotExistingPost {
+    public static int deletePost(int postID, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
-        Post p = null;
+        var wrapper = new Object() {
+            Post ps = null;
+        };
 
         user.readl.lock();
-        if (idPost > 0) // user wants to delete a specific post
-            p = checkPost(idPost);
-        else // user wants to delete one of his posts, but there might be none
-            p = posts.get(user.blog.stream().findFirst().orElse(-1));
+        int idPost = postID < 0 ? user.blog.stream().findFirst().orElse(-1) : postID;
         user.readl.unlock();
 
-        if (p == null)
+        if (idPost < 0) // user wanted to remove a random post from his blog, but has never published
+                        // (or rewined) a post
             throw new NotExistingPost();
-        if (username.equals(p.owner)) {
-            int id = p.idPost; // idPost might be negative, thus not representative of the actual id of the
-                               // post that is going to removed
-            posts.remove(id);
-            // We have to remove the post from owner's and rewiners's blog
-            user.writel.lock();
-            user.blog.remove(id);
-            user.writel.unlock();
 
-            p.readl.lock();
-            HashSet<String> rewiners = new HashSet<String>(p.rewiners);
-            p.readl.unlock();
+        posts.computeIfPresent(idPost, (id, post) -> {
+            if (post.owner.equals(username)) {
+                wrapper.ps = post;
+                wrapper.ps.readl.lock();
+                return null;
+            }
+            return post;
+        });
 
-            rewiners.forEach((String name) -> {
-                User rewiner = users.get(name);
-                rewiner.writel.lock();
-                users.get(name).blog.remove(id);
-                rewiner.writel.unlock();
-            });
-            return id;
-        }
-        return -1; // the client isn't the owner
+        if (wrapper.ps == null) // client isn't the owner
+            return -1;
+
+        Post p = wrapper.ps;
+        HashSet<String> rewiners = new HashSet<String>(p.rewiners);
+        p.readl.unlock();
+
+        // We have to remove the post from owner's and rewiners's blog
+        user.writel.lock();
+        user.blog.remove(idPost);
+        user.writel.unlock();
+
+        rewiners.forEach((String name) -> {
+            User rewiner = users.get(name);
+            rewiner.writel.lock();
+            users.get(name).blog.remove(idPost);
+            rewiner.writel.unlock();
+        });
+        return idPost;
+
     }
 
     ;
@@ -387,21 +405,32 @@ public class ServerInternal {
     public static int rewinPost(int idPost, String username) throws NotExistingUser, NotExistingPost {
         User user = checkUsername(username);
         Post p = checkPost(idPost);
+
+        // do some checks first
         if (username.equals(p.owner))
             return 1;
-        if (!checkFeed(user, p))
-            return 2;
+        
+        int toRet = 0;
+        // critical section
+        p = posts.computeIfPresent(idPost, (id, post) -> {
+            post.writel.lock(); // if present acquire lock
+            return post; // re-assign the same value
+        });
+        if (p == null) // another thread called deletePost() in the meantime
+            throw new NotExistingPost();
+
         user.writel.lock();
-        user.blog.add(p.idPost);
+        if (checkFeed(user, p)){ // we can acquire readlock while holding writelock
+            p.rewiners.add(username);
+            user.blog.add(p.idPost);
+        }
+        else
+            toRet = 2;
         user.writel.unlock();
-        p.writel.lock();
-        p.rewiners.add(username);
         p.writel.unlock();
 
-        return 0;
+        return toRet;
     }
-
-    ;
 
     /**
      * @param idPost
@@ -507,18 +536,20 @@ public class ServerInternal {
     private static User checkUsername(String username) throws NotExistingUser {
         if (username == null)
             throw new NullPointerException();
-        if (!users.containsKey(username))
+        User toRet;
+        if ((toRet = users.get(username)) == null)
             throw new NotExistingUser();
-        return users.get(username);
+        return toRet;
     }
 
     /**
      * check's if post exists in winsome
      */
     private static Post checkPost(int idPost) throws NotExistingPost {
-        if (!posts.containsKey(idPost))
+        Post toRet;
+        if ((toRet = posts.get(idPost)) == null)
             throw new NotExistingPost();
-        return posts.get(idPost);
+        return toRet;
     }
 
     /**
@@ -664,7 +695,7 @@ public class ServerInternal {
      * {reward algorithm iterations at post's creation}
      */
     public static void rewardAlgorithm() {
-        
+
         incrementRewardIterations();
         // get all the modified posts since the last time the algorithm got executed
         // we will empty the three Collections once we're done evaluating
@@ -674,8 +705,9 @@ public class ServerInternal {
         modifiedPosts.addAll(newComments.keySet());
 
         modifiedPosts.forEach((id) -> {
+            Post post;
             // check if the post still exists
-            if (posts.containsKey(id)) {
+            if ((post = posts.get(id)) != null) {
                 // these will come in handy later
                 boolean anyUpvotes = newUpvotes.containsKey(id);
                 boolean anyDownvotes = newDownvotes.containsKey(id);
@@ -701,7 +733,6 @@ public class ServerInternal {
                     wrapper.sum += 2 / (1 + Math.pow(Math.E, -(cp - 1)));
                 });
 
-                Post post = posts.get(id); // we've already checked that posts.containsKey(id) == true
                 double reward = (Math.log(Math.max(upvotes - downvotes, 0) + 1) + Math.log(wrapper.sum + 1))
                         / (rewardPerformedIterations - post.rewardIterationsOnCreation);
 
@@ -757,7 +788,7 @@ public class ServerInternal {
         ServerInternal.rewardPerformedIterations++;
     }
 
-    public static void setBtcRate () {
+    public static void setBtcRate() {
         try {
             URL url = new URL("https://www.random.org/decimal-fractions/?num=1&dec=10&col=1&format=plain&rnd=new");
             HttpURLConnection con = (HttpURLConnection) url.openConnection();
