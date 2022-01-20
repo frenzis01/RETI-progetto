@@ -111,7 +111,7 @@ public class Client {
                     "Connected to the Server\n" +
                             "Type 'help' to display the complete commands list\n" +
                             "Type 'exit' to close application.\n" +
-                            "Type 'notif print' to enable/disable notifications printing");
+                            "Type 'notify' to enable/disable notifications printing");
 
             // Now the client is connected
             while (!this.exit && iCliCommands < commands.length - 1) {
@@ -131,7 +131,7 @@ public class Client {
                 if (Pattern.matches("^notif\\s+print\\s*$", msg)) {
                     notifyPrintEnable = !notifyPrintEnable;
                     print(
-                            "Reward calculation notification is now " + (notifyPrintEnable ? "enabled" : "disabled"));
+                            "Notifications are now " + (notifyPrintEnable ? "enabled" : "disabled"));
                     continue;
                 }
 
@@ -311,7 +311,7 @@ public class Client {
 
     private static String usage() {
         return "USAGE:" +
-                "\tnotif print\t(-> enables/disables followers and reward notifications)\n" +
+                "\tnotify\t(-> enables/disables followers and reward notifications)\n" +
                 "\texit\n" +
                 "\tregister <username> <password> <tags>\n" +
                 "\tlogin <username> <password>\n" +
