@@ -261,14 +261,15 @@ class Server {
             String param[] = s.split("\\s+");
             if (ServerInternal.login(param[1], param[2]) == 0) {
                 var wrapper = new Object() {
-                    String s = null;
+                    // this value is never used, the client doesn't even send the request if there's
+                    // another user logged in. However...
+                    String s = "A different user is logged from your address";
                 };
-                loggedUsers.compute(requestorAddress, (k, v) -> {
-                    if(loggedUsers.containsValue(param[1])){
-                        wrapper.s ="The same user is already logged in from another address";
+                loggedUsers.computeIfAbsent(requestorAddress, (k) -> {
+                    if (loggedUsers.containsValue(param[1])) {
+                        wrapper.s = "The same user is already logged in from another address";
                         return null;
-                    }
-                    else{
+                    } else {
                         wrapper.s = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
                         return param[1];
                     }
