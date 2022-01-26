@@ -34,7 +34,7 @@ public class Client {
     private volatile boolean logged = false;
     // setted to false as default value to avoid annoying notification messages
     // while typing commands
-    private volatile boolean notifyPrintEnable = false;
+    private volatile VolatileWrapper<Boolean> notifyPrintEnable = new VolatileWrapper<Boolean>(false);
     private static boolean printEnable = false;
     private ROSint server;
     private ROCint stub = null;
@@ -127,9 +127,9 @@ public class Client {
 
                 // "Rewards calculated" print enable/disable
                 if (Pattern.matches("^notify\\s*$", msg)) {
-                    notifyPrintEnable = !notifyPrintEnable;
+                    notifyPrintEnable.v = !notifyPrintEnable.v;
                     print(
-                            "Notifications are now " + (notifyPrintEnable ? "enabled" : "disabled"));
+                            "Notifications are now " + (notifyPrintEnable.v ? "enabled" : "disabled"));
                     continue;
                 }
 
@@ -259,7 +259,7 @@ public class Client {
                 // we must keep a reference
                 InetSocketAddress group = new InetSocketAddress(InetAddress.getByName(addr), port);
                 NetworkInterface netInt = NetworkInterface.getByName("wlan1");
-                
+
                 myMCskt.joinGroup(group, netInt);
 
                 byte[] buffer = new byte[8192];
@@ -277,7 +277,7 @@ public class Client {
 
                     if (Thread.currentThread().isInterrupted())
                         break;
-                    if (notifyPrintEnable)
+                    if (notifyPrintEnable.v)
                         print(new String(dp.getData()));
                 }
                 myMCskt.leaveGroup(group, netInt);

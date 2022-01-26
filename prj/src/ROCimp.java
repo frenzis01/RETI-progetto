@@ -6,9 +6,9 @@ import java.util.stream.Collectors;
 public class ROCimp extends RemoteObject implements ROCint {
     String username;
     HashSet<String> followers = new HashSet<String>();
-    boolean printEnable = true;
+    VolatileWrapper<Boolean> printEnable;
 
-    public ROCimp(String username, boolean printEnable) {
+    public ROCimp(String username, VolatileWrapper<Boolean> printEnable) {
         super();
         this.username = new String(username);
         this.printEnable = printEnable;
@@ -19,24 +19,24 @@ public class ROCimp extends RemoteObject implements ROCint {
     }
 
     public void newFollowers(HashSet<String> users, boolean shouldPrint) {
-        // System.out.println(this.username + " followers list updated");
         {
+            // Generally, this will print only one user, since this method is invoked every
+            // time an edit is performed on the client's followers
+
+            // Print users who stopped following the user
             Set<String> unfollowers = this.followers.stream().filter((u) -> !users.contains(u))
                     .collect(Collectors.toSet());
             unfollowers.forEach(u -> {
-                if (printEnable && shouldPrint)
+                if (printEnable.v && shouldPrint)
                     System.out.println(u + " |-> no longer follows you");
                 this.followers.remove(u);
             });
+            // Print users who started following the user
             users.stream().filter((u) -> !this.followers.contains(u)).forEach(u -> {
-                if (printEnable && shouldPrint)
+                if (printEnable.v && shouldPrint)
                     System.out.println(u + " |-> has started following you");
                 this.followers.add(u);
             });
         }
-        // this.followers = new HashSet<String>(users);
-        // this re-assignment should be equal to:
-        // this.followers.retainAll(users);
-        // this.followers.addAll(users)
     }
 }

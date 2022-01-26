@@ -12,8 +12,8 @@ echo "{
 }" > ../config/clientConfig.json
 
 echo "Compiling client..."
-javac -cp "../lib/*:../src:../out" -d "../out/" ../src/Client.java ../src/ClientMain.java
+javac -cp "../lib/*:../src:../out" -d "../out/" ../src/Client*.java ../src/ROC*.java ../src/Util.java ../src/VolatileWrapper.java ../src/exceptions/*.java
 echo "Building Client.jar ..."
 cd ../out
-jar vcmf ../config/client.mf ../jar/Client.jar Client*.class ROSint.class ROCint.class ROCimp.class Util.class exceptions/*.class
+jar vcmf ../config/client.mf ../jar/Client.jar Client*.class ROSint.class ROCint.class ROCimp.class Util.class VolatileWrapper.class exceptions/*.class
 cd "$(dirname "$0")"

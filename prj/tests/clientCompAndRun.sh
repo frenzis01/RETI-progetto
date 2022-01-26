@@ -9,5 +9,5 @@ echo -e "{
     \"cli\" : \"false\"
 }" > ../clientConfig.json
 
-javac -cp "../lib/*:../src:../out" -d "../out/" ../src/Client.java ../src/ClientMain.java
+javac -cp "../lib/*:../src:../out" -d "../out/" ../src/Client*.java ../src/ROC*.java ../src/Util.java ../src/VolatileWrapper.java ../src/exceptions/*.java
 java -cp "../lib:../lib/*:../out/*:../out:../src" ClientMain 

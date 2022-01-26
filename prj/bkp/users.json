@@ -12,7 +12,7 @@
   "u1" : {
     "username" : "u1",
     "password" : "1",
-    "blog" : [ 42, 43 ],
+    "blog" : [ 68, 71, 60, 46, 62 ],
     "followers" : [ "u5", "u2", "u4" ],
     "following" : [ "u2", "u3" ],
     "wallet" : 0.8693162079699814,
@@ -27,7 +27,7 @@
     "password" : "2",
     "blog" : [ ],
     "followers" : [ "u1", "u3" ],
-    "following" : [ "u1", "u3" ],
+    "following" : [ "u1" ],
     "wallet" : 0.18628204456499606,
     "walletHistory" : [ {
       "ts" : "2022-03-26 01:03:13",
@@ -38,8 +38,8 @@
   "u3" : {
     "username" : "u3",
     "password" : "3",
-    "blog" : [ 39, 41, 30, 31 ],
-    "followers" : [ "u1", "u2" ],
+    "blog" : [ 66, 67, 69, 70, 61, 63 ],
+    "followers" : [ "u1" ],
     "following" : [ "u2" ],
     "wallet" : 0.0,
     "walletHistory" : [ ],
