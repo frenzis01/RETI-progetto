@@ -13,6 +13,7 @@ public @Data class ServerConfig {
     long logTimeout = 10000;
     long btcTimeout = 5000;
     int nworker = 5;
+    boolean exclusiveLogin = true;
     
     public ServerConfig() {
         super();

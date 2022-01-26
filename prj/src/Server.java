@@ -464,7 +464,7 @@ class Server {
                     String s = "A different user is logged from your address";
                 };
                 loggedUsers.computeIfAbsent(requestorAddress, (k) -> {
-                    if (loggedUsers.containsValue(param[1])) {
+                    if (this.config.exclusiveLogin && loggedUsers.containsValue(param[1])) {
                         wrapper.s = "The same user is already logged in from another address";
                         return null;
                     } else {

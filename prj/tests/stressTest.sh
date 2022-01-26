@@ -5,19 +5,25 @@ REG=$(tput sgr0)
 TIMER=40
 export BWHT
 
-#run server in background
-javac -cp "../lib/*:../src:../out" -d "../out/" ../src/*.java ../src/exceptions/*.java
-java -cp "../lib/*:../out" ServerMain &
+cd "$(dirname "$0")"
+
+# SERVER SETUP
+# build server
+./serverBuild.sh
+# allow the same user to be logged by more than one process
+echo "{
+    \"exclusiveLogin\" : \"false\"
+}" > ../config/serverConfig.json
+# run server in background
+java -jar ../jar/Server.jar &
 export S_PID=$!
 
-echo -e $BWHT "
 
-    STARTING STRESS TEST
-    20 Clients will run simultaneously without printing anything for ${TIMER}s
-    Server PID = $S_PID
+# CLIENT SETUP
+# build Client.jar
+./clientBuild.sh
 
-" $REG
-
+# overwrite clientConfig.json
 #"cli" : "true" is a key value
 # it allows us to pass winsome cli commands through cli arguments
 echo -e "{
@@ -27,10 +33,19 @@ echo -e "{
     \"serverNameLookup\" : \"winsomeServer\",
     \"serverAddress\" : \"localhost\",
     \"cli\" : \"true\"
-}" > ../clientConfig.json
+}" > ../config/clientConfig.json
 
-
+# wait for the server to boot
 sleep 2
+
+echo -e $BWHT "
+
+    STARTING STRESS TEST
+    20 Clients will run simultaneously without printing anything for ${TIMER}s
+    Server PID = $S_PID
+
+" $REG
+
 
 start=$SECONDS
 
@@ -40,7 +55,7 @@ do
 done
 
 echo -e $BWHT "
-    SLEEPING
+    stressTest.sh is SLEEPING now...
 " $REG
 
 sleep ${TIMER}
@@ -49,6 +64,8 @@ echo -e $BWHT "
     KILLING SERVER and SPAWNCLIENTS
 " $REG
 # killall -9 spawnclients.sh > /dev/null 2>/dev/null
+# redirecting kill output doesn't seem to be working sadly...
+#   looks ok using sh instead of bash, but doing so would break the script
 killall -9 spawnclients.sh | at now &> /dev/null
 kill -15 $S_PID
 # -9 == SIGKILL

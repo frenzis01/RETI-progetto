@@ -4,5 +4,5 @@
     "serverPort" : "12345",
     "serverNameLookup" : "winsomeServer",
     "serverAddress" : "localhost",
-    "cli" : "false"
+    "cli" : "true"
 }

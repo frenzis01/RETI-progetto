@@ -1,7 +1,3 @@
 {
-"tcpPort" : "12345",
-"multicastPort" : "6789",
-"registryPort" : "1900",
-"authorPercentage" : "0.8",
-"backupDir" : "../bkp/"
+    "exclusiveLogin" : "false"
 }

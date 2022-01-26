@@ -1,31 +1,80 @@
 {
-  "0" : {
-    "idPost" : 0,
-    "owner" : "u1",
-    "title" : "p1",
-    "content" : "Lorem ipsum",
-    "date" : 1643197451610,
+  "39" : {
+    "idPost" : 39,
+    "owner" : "u3",
+    "title" : "post by 2",
+    "content" : "test content",
+    "date" : 1643206531432,
     "upvote" : [ ],
     "downvote" : [ ],
     "comments" : { },
     "rewiners" : [ ],
-    "rewardIterationsOnCreation" : 0,
+    "rewardIterationsOnCreation" : 92,
     "reward" : 0.0
   },
-  "1" : {
-    "idPost" : 1,
-    "owner" : "u1",
-    "title" : "p2",
-    "content" : "dolor sit amet",
-    "date" : 1643197451611,
+  "41" : {
+    "idPost" : 41,
+    "owner" : "u3",
+    "title" : "post by 2",
+    "content" : "test content",
+    "date" : 1643206534739,
     "upvote" : [ ],
     "downvote" : [ ],
-    "comments" : {
-      "u2" : [ "consectetur adipisci", "consectetur adipiscy" ],
-      "u4" : [ "consectetur adipisce" ]
-    },
+    "comments" : { },
     "rewiners" : [ ],
-    "rewardIterationsOnCreation" : 0,
-    "reward" : 1.2418802970999736
+    "rewardIterationsOnCreation" : 93,
+    "reward" : 0.0
+  },
+  "42" : {
+    "idPost" : 42,
+    "owner" : "u1",
+    "title" : "by 1",
+    "content" : "second content",
+    "date" : 1643206534899,
+    "upvote" : [ ],
+    "downvote" : [ ],
+    "comments" : { },
+    "rewiners" : [ ],
+    "rewardIterationsOnCreation" : 93,
+    "reward" : 0.0
+  },
+  "43" : {
+    "idPost" : 43,
+    "owner" : "u1",
+    "title" : "by 1",
+    "content" : "second content",
+    "date" : 1643206535680,
+    "upvote" : [ ],
+    "downvote" : [ ],
+    "comments" : { },
+    "rewiners" : [ ],
+    "rewardIterationsOnCreation" : 93,
+    "reward" : 0.0
+  },
+  "30" : {
+    "idPost" : 30,
+    "owner" : "u3",
+    "title" : "post by 2",
+    "content" : "test content",
+    "date" : 1643206406951,
+    "upvote" : [ ],
+    "downvote" : [ ],
+    "comments" : { },
+    "rewiners" : [ ],
+    "rewardIterationsOnCreation" : 86,
+    "reward" : 0.0
+  },
+  "31" : {
+    "idPost" : 31,
+    "owner" : "u3",
+    "title" : "post by 2",
+    "content" : "test content",
+    "date" : 1643206407012,
+    "upvote" : [ ],
+    "downvote" : [ ],
+    "comments" : { },
+    "rewiners" : [ ],
+    "rewardIterationsOnCreation" : 86,
+    "reward" : 0.0
   }
 }
