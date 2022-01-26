@@ -3,9 +3,10 @@ public class ClientMain {
     public static void main (String args[]) {
         try {
 
-            // TCP communication
-            Client client = new Client("../clientConfig.json");
+            Client client = new Client(args.length > 0 ? args[0] : "../config/clientConfig.json");
             client.start(String.join(" ",args));
+            
+            // Some RMI threads seem to be keeping the JVM on, we have to shutdown manually
             System.exit(0);
             return;
         

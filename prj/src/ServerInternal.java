@@ -25,9 +25,10 @@ import exceptions.NotExistingUser;
 
 public class ServerInternal {
 
-    private static int idPostCounter = 0; // will write this in a json file
-    private static int rewardPerformedIterations = 0; // will write this in a json file
 
+    // these hold winsome's internal status
+    private static int idPostCounter = 0;
+    private static int rewardPerformedIterations = 0;
     private static ConcurrentHashMap<String, User> users = new ConcurrentHashMap<>();
     private static ConcurrentHashMap<String, HashSet<String>> tagsUsers = new ConcurrentHashMap<>();
     private static ConcurrentHashMap<Integer, Post> posts = new ConcurrentHashMap<>();
@@ -106,6 +107,8 @@ public class ServerInternal {
         ServerInternal.authorPercentage = authorPercentage;
     }
 
+    // Functions used to interact with the internal state of winsome
+
     /**
      * @param username
      * @param password
@@ -118,20 +121,6 @@ public class ServerInternal {
         if (users.containsKey(username) && users.get(username).password.equals(password))
             return 0;
         return 1;
-    }
-
-    ;
-
-    /**
-     * Does this have any sense at all ?
-     * //TODO
-     *
-     * @param username
-     */
-    public static void logout(String username) {
-        if (username == null)
-            throw new NullPointerException();
-
     }
 
     ;
@@ -259,6 +248,8 @@ public class ServerInternal {
     ;
 
     /**
+     * displays the logged user's blog, no username param needed
+     * 
      * @param username
      * @return set of posts made or rewined by the user
      * @throws NotExistingUser
@@ -278,7 +269,7 @@ public class ServerInternal {
         return toRet;
     }
 
-    ; // displays the logged user's blog, no username param needed
+    ;
 
     /**
      * add a Post to the client's blog
@@ -286,7 +277,7 @@ public class ServerInternal {
      * @param titolo
      * @param contenuto
      * @param username
-     * @return
+     * @return the post just created
      * @throws NotExistingUser
      */
     public static PostWrap createPost(String titolo, String contenuto, String username) throws NotExistingUser {
@@ -393,7 +384,9 @@ public class ServerInternal {
     ;
 
     /**
-     * rewin a Post made by another user. A client cannot rewin its own posts
+     * rewin a Post made by another user. A client cannot rewin its own posts.
+     * Rewining a post doesn't create a new post, it simply makes somebody's post
+     * appear in someone else's blog
      *
      * @param idPost
      * @param username
@@ -409,7 +402,7 @@ public class ServerInternal {
         // do some checks first
         if (username.equals(p.owner))
             return 1;
-        
+
         int toRet = 0;
         // critical section
         p = posts.computeIfPresent(idPost, (id, post) -> {
@@ -420,11 +413,10 @@ public class ServerInternal {
             throw new NotExistingPost();
 
         user.writel.lock();
-        if (checkFeed(user, p)){ // we can acquire readlock while holding writelock
+        if (checkFeed(user, p)) { // we can acquire readlock while holding writelock
             p.rewiners.add(username);
             user.blog.add(p.idPost);
-        }
-        else
+        } else
             toRet = 2;
         user.writel.unlock();
         p.writel.unlock();
@@ -435,7 +427,7 @@ public class ServerInternal {
     /**
      * @param idPost
      * @param username
-     * @return
+     * @return post such that post.idPost = idPost, if present
      * @throws NotExistingUser
      * @throws NotExistingPost
      */
@@ -446,6 +438,7 @@ public class ServerInternal {
     }
 
     /**
+     * adds a vote by username
      * @param idPost
      * @param vote
      * @param username
@@ -524,13 +517,16 @@ public class ServerInternal {
         return toRet;
     };
 
-    // private utilities
+
+
+    
+    // Private utilities
 
     /**
      * Check's whether the given username is associated with a winsome user
      * 
      * @param username
-     * @return
+     * @return 
      * @throws NotExistingUser
      */
     private static User checkUsername(String username) throws NotExistingUser {
@@ -557,7 +553,7 @@ public class ServerInternal {
      *
      * @param user
      * @param p
-     * @return
+     * @return true | false
      */
     private static boolean checkFeed(User user, Post p) {
         p.readl.lock();
@@ -573,6 +569,9 @@ public class ServerInternal {
         return true;
     }
 
+    /**
+     * Wrapper to save the status of a User instance in a particular instant
+     */
     public class UserWrap implements Comparable<UserWrap> {
         final String username;
         final String[] tags /* , following, followers */;
@@ -612,6 +611,9 @@ public class ServerInternal {
 
     }
 
+    /**
+     * Wrapper to save the status of a Post instance in a particular instant
+     */
     public class PostWrap implements Comparable<PostWrap> {
         final String owner;
         final int idPost, upvote, downvote;
@@ -652,6 +654,7 @@ public class ServerInternal {
 
     }
 
+    // utilities to print (User|Post)Wrap
     public static String userWrapSet2String(HashSet<ServerInternal.UserWrap> users) {
         String toRet = "User \t|\t Tag\n";
         for (ServerInternal.UserWrap u : users) {
@@ -699,7 +702,8 @@ public class ServerInternal {
         incrementRewardIterations();
         // get all the modified posts since the last time the algorithm got executed
         // we will empty the three Collections once we're done evaluating
-        HashSet<Integer> modifiedPosts = new HashSet<>();
+
+        Set<Integer> modifiedPosts = ConcurrentHashMap.newKeySet();
         modifiedPosts.addAll(newUpvotes.keySet());
         modifiedPosts.addAll(newDownvotes.keySet());
         modifiedPosts.addAll(newComments.keySet());
@@ -737,7 +741,7 @@ public class ServerInternal {
                         / (rewardPerformedIterations - post.rewardIterationsOnCreation);
 
                 post.writel.lock();
-                post.reward += reward; // TODO is this somehow useful ...? probab not
+                post.reward += reward; // This isn't useful actually...
                 post.writel.unlock();
 
                 SimpleDateFormat x = new SimpleDateFormat("yyyy-mm-dd hh:mm:ss");
@@ -788,6 +792,9 @@ public class ServerInternal {
         ServerInternal.rewardPerformedIterations++;
     }
 
+    /**
+     * Uses random.org to get a new winsome-to-bitcoin rate
+     */
     public static void setBtcRate() {
         try {
             URL url = new URL("https://www.random.org/decimal-fractions/?num=1&dec=10&col=1&format=plain&rnd=new");

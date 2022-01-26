@@ -101,7 +101,6 @@ class Server {
         LocateRegistry.getRegistry(config.registryPort).rebind("winsomeServer", stub);
         // Now ready to handle RMI registration and followers's update notifications
 
-        // TODO make this fixed?
         this.workerPool = (ThreadPoolExecutor) Executors.newFixedThreadPool(this.config.nworker);
 
         Thread tcpThread = new Thread(this.selectorDaemon());
@@ -120,29 +119,6 @@ class Server {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-    }
-
-    /**
-     * Read request from client and register OP_WRITE on the Selector
-     *
-     * @param sel selettore utilizzato dal server
-     * @param key chiave di selezione
-     * @throws IOException se si verifica un errore di I/O
-     */
-    private void getClientRequest(Selector sel, SelectionKey key) throws IOException {
-        // Create new SocketChannel with the Client
-        SocketChannel c_channel = (SocketChannel) key.channel();
-
-        String req = Util.readMsgFromSocket(c_channel);
-        p("-------" + c_channel.getRemoteAddress().toString() + "\n | Received => " + req);
-        if (Pattern.matches("^logout\\s*$", req)) { // client logged out
-            p("client " + c_channel.getRemoteAddress());
-            ServerInternal.logout(loggedUsers.get(c_channel.getRemoteAddress().toString()));
-            loggedUsers.remove(c_channel.getRemoteAddress().toString());
-        } else {
-            this.workerPool.execute(this.requestHandler(req, c_channel, c_channel.getRemoteAddress().toString()));
-        }
-
     }
 
     /**
@@ -187,218 +163,7 @@ class Server {
         };
     }
 
-    /**
-     * Content type of the shared queue between workers and selectorDaemon, which
-     * uses this class to know when it has to call register(OP_WRITE) on a given
-     * channel
-     */
-    private class RegisterParams {
-        SocketChannel c;
-        ByteBuffer[] atc;
-
-        public RegisterParams(SocketChannel c, ByteBuffer[] atc) {
-            this.c = c;
-            this.atc = atc.clone();
-        }
-    }
-
-    /**
-     * Writes the content of key.attachment to the associated channel
-     *
-     * @param key
-     * @throws IOException
-     */
-    private void sendResult(Selector sel, SelectionKey key) throws IOException {
-        SocketChannel c_channel = (SocketChannel) key.channel();
-
-        /**
-         * key.attachment() contains the length of the message to be written and the
-         * message itself. We'll prepend the length.
-         */
-        ByteBuffer[] answer = (ByteBuffer[]) key.attachment();
-        ByteBuffer toSend = ByteBuffer.allocate(answer[0].remaining() + answer[1].remaining()).put(answer[0])
-                .put(answer[1]);
-        toSend.flip();
-        c_channel.write(toSend);
-        toSend.clear();
-
-        answer[0].flip();
-        if (toSend.hasRemaining()) {
-            toSend.clear();
-            c_channel.register(sel, SelectionKey.OP_READ);
-            sel.wakeup();
-        }
-
-    }
-
-    /**
-     * When a client calls exit or prematurely leaves
-     */
-    private void clientExitHandler(SelectionKey key) throws IOException {
-        // if the client has disconnected c.getRemoteAddress returns null
-        SocketChannel c = (SocketChannel) key.channel();
-        if (c.isOpen()) {
-            SocketAddress cAddr = c.getRemoteAddress();
-            if (cAddr != null) // this seems always to be true
-                loggedUsers.remove(cAddr.toString());
-            key.channel().close();
-            key.cancel();
-            this.activeConnections--;
-        }
-    }
-
-    /**
-     * Tries to match s with one of winsome's commands
-     * 
-     * @param s                request
-     * @param requestorAddress
-     * @return the response to be sent to the client
-     */
-    private String parseRequest(String s, String requestorAddress) {
-        // login
-        String toRet = "";
-        if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", s)) {
-            String param[] = s.split("\\s+");
-            if (ServerInternal.login(param[1], param[2]) == 0) {
-                var wrapper = new Object() {
-                    // this value is never used, the client doesn't even send the request if there's
-                    // another user logged in. However...
-                    String s = "A different user is logged from your address";
-                };
-                loggedUsers.computeIfAbsent(requestorAddress, (k) -> {
-                    if (loggedUsers.containsValue(param[1])) {
-                        wrapper.s = "The same user is already logged in from another address";
-                        return null;
-                    } else {
-                        wrapper.s = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
-                        return param[1];
-                    }
-                });
-                toRet = wrapper.s;
-
-            } else
-                toRet = "Login error. Either username or password are wrong";
-        } else {
-            String u = loggedUsers.get(requestorAddress);
-            try {
-                if (u == null) {
-                    toRet = "Sign-in before sending requests";
-                }
-                // list users
-                else if (Pattern.matches("^list\\s+users\\s*$", s)) {
-                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listUsers(u));
-                }
-                // list followers... never used
-                else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
-                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowers(u));
-                }
-                // list following
-                else if (Pattern.matches("^list\\s+following\\s*$", s)) {
-                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowing(u));
-                }
-                // follow user
-                else if (Pattern.matches("^follow\\s+\\S+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    int res = ServerInternal.followUser(param[1], u);
-                    if (res == 0) {
-                        toRet = "Now following \"" + param[1] + "\"";
-                        serverRMI.update(param[1], true);
-                    } else if (res == 1)
-                        toRet = "Already following \"" + param[1] + "\"";
-                    else
-                        toRet = "Can't follow yourself";
-                }
-                // unfollow user
-                else if (Pattern.matches("^unfollow\\s+\\S+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    if (ServerInternal.unfollowUser(param[1], u) == 0) {
-                        toRet = "Now unfollowing \"" + param[1] + "\"";
-                        serverRMI.update(param[1], true);
-                    } else
-                        toRet = "Already not following \"" + param[1] + "\"";
-                }
-                // view blog
-                else if (Pattern.matches("^blog\\s*$", s)) {
-                    toRet = ServerInternal.postWrapSet2String(ServerInternal.viewBlog(u));
-                }
-                // create post
-                else if (Pattern.matches("^post\\s+\".+\"\\s+\".+\"\\s*$", s)) {
-                    String param[] = s.split("\"");
-                    ServerInternal.PostWrap p = ServerInternal.createPost(param[1], param[3], u);
-                    toRet = "New post created: " + p.idPost /* + " " + param[1] + " " + param[3] */;
-                }
-                // show feed
-                else if (Pattern.matches("^show\\s+feed\\s*$", s)) {
-                    toRet = ServerInternal.postWrapSet2String(ServerInternal.showFeed(u));
-                }
-                // show post
-                else if (Pattern.matches("^show\\s+post\\s+\\d+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    toRet = ServerInternal.postWrap2String(ServerInternal.showPost(Integer.parseInt(param[2]), u));
-                }
-                // delete post
-                else if (Pattern.matches("^delete\\s+post\\s+[+-]?\\d+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    int res = ServerInternal.deletePost(Integer.parseInt(param[2]), u);
-                    if (res == -1)
-                        toRet = "Cannot delete a post which isn't owned by you";
-                    else
-                        toRet = "Post " + res + " deleted"; // param[2] negativo //TODO
-                }
-                // rewin post
-                else if (Pattern.matches("^rewin\\s+post\\s+\\d+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    if (ServerInternal.rewinPost(Integer.parseInt(param[2]), u) == 1)
-                        toRet = "Cannot rewin a post made by yourself";
-                    else
-                        toRet = "Post " + param[2] + " rewined";
-                }
-                // rate post
-                else if (Pattern.matches("^rate\\s+post\\s+\\d+\\s[+-]?\\d+\\s*$", s)) {
-                    String param[] = s.split("\\s+");
-                    int vote = Integer.parseInt(param[2]);
-                    int res = ServerInternal.ratePost(vote, Integer.parseInt(param[3]), u);
-                    if (res == 1)
-                        toRet = "Cannot rate a post which isn't in your feed";
-                    else if (res == 2)
-                        toRet = "Already voted";
-                    else
-                        toRet = "Post " + param[2] + (vote >= 0 ? " upvoted" : " downvoted");
-                }
-                // add comment
-                else if (Pattern.matches("^comment\\s+\\d+\\s+\".+\"\\s*$", s)) {
-                    String id = s.split("\\s+")[1];
-                    String comment = s.substring(s.indexOf("\"") + 1, s.lastIndexOf("\""));
-                    if (ServerInternal.addComment(Integer.parseInt(id), comment, u) == 1)
-                        toRet = "Cannot rate a post which isn't in your feed";
-                    else
-                        toRet = "Comment added to post " + id;
-                }
-                // get wallet
-                else if (Pattern.matches("^wallet\\s*$", s)) {
-                    toRet = ServerInternal.getWallet(u);
-                }
-                // get wallet bitcoin
-                else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {
-                    toRet = "" + ServerInternal.getWalletInBitcoin(u);
-                } else if (Pattern.matches("^logout\\s*$", s) || Pattern.matches("^exit\\s*$", s)) {
-                    toRet = "No response will be sent";
-                } else {
-                    return toRet = "Unknown command: " + s; // no matches, show help ? //TODO
-                }
-            } catch (NotExistingUser e) {
-                toRet = "User not found";
-            } catch (NotExistingPost e) {
-                toRet = "Post not found";
-            } catch (RemoteException e) {
-                e.printStackTrace();
-                System.out.println("|ERROR updating followers list");
-            }
-        }
-
-        return toRet;
-    }
-
+    
     // THREADS implementation
     private Runnable rewardDaemon() {
         return () -> {
@@ -595,6 +360,250 @@ class Server {
         };
     }
 
+    // Stuff used by selectorDaemon
+
+    /**
+     * Content type of the shared queue between workers and selectorDaemon, which
+     * uses this class to know when it has to call register(OP_WRITE) on a given
+     * channel
+     */
+    private class RegisterParams {
+        SocketChannel c;
+        ByteBuffer[] atc;
+
+        public RegisterParams(SocketChannel c, ByteBuffer[] atc) {
+            this.c = c;
+            this.atc = atc.clone();
+        }
+    }
+
+    /**
+     * Read request from client and register OP_WRITE on the Selector
+     *
+     * @param sel selettore utilizzato dal server
+     * @param key chiave di selezione
+     * @throws IOException se si verifica un errore di I/O
+     */
+    private void getClientRequest(Selector sel, SelectionKey key) throws IOException {
+        // Create new SocketChannel with the Client
+        SocketChannel c_channel = (SocketChannel) key.channel();
+
+        String req = Util.readMsgFromSocket(c_channel);
+        p("-------" + c_channel.getRemoteAddress().toString() + "\n | Received => " + req);
+        if (Pattern.matches("^logout\\s*$", req)) { // client logged out
+            p("client " + c_channel.getRemoteAddress());
+            loggedUsers.remove(c_channel.getRemoteAddress().toString());
+        } else {
+            this.workerPool.execute(this.requestHandler(req, c_channel, c_channel.getRemoteAddress().toString()));
+        }
+
+    }
+
+
+    /**
+     * Writes the content of key.attachment to the associated channel
+     *
+     * @param key
+     * @throws IOException
+     */
+    private void sendResult(Selector sel, SelectionKey key) throws IOException {
+        SocketChannel c_channel = (SocketChannel) key.channel();
+
+        /**
+         * key.attachment() contains the length of the message to be written and the
+         * message itself. We'll prepend the length.
+         */
+        ByteBuffer[] answer = (ByteBuffer[]) key.attachment();
+        ByteBuffer toSend = ByteBuffer.allocate(answer[0].remaining() + answer[1].remaining()).put(answer[0])
+                .put(answer[1]);
+        toSend.flip();
+        c_channel.write(toSend);
+        toSend.clear();
+
+        answer[0].flip();
+        if (toSend.hasRemaining()) {
+            toSend.clear();
+            c_channel.register(sel, SelectionKey.OP_READ);
+            sel.wakeup();
+        }
+
+    }
+
+    /**
+     * When a client calls exit or prematurely leaves
+     */
+    private void clientExitHandler(SelectionKey key) throws IOException {
+        // if the client has disconnected c.getRemoteAddress returns null
+        SocketChannel c = (SocketChannel) key.channel();
+        if (c.isOpen()) {
+            SocketAddress cAddr = c.getRemoteAddress();
+            if (cAddr != null) // this seems always to be true
+                loggedUsers.remove(cAddr.toString());
+            key.channel().close();
+            key.cancel();
+            this.activeConnections--;
+        }
+    }
+
+    /**
+     * Tries to match s with one of winsome's commands
+     * 
+     * @param s                request
+     * @param requestorAddress
+     * @return the response to be sent to the client
+     */
+    private String parseRequest(String s, String requestorAddress) {
+        // login
+        String toRet = "";
+        if (Pattern.matches("^login\\s+\\S+\\s+\\S+\\s*$", s)) {
+            String param[] = s.split("\\s+");
+            if (ServerInternal.login(param[1], param[2]) == 0) {
+                var wrapper = new Object() {
+                    // this value is never used, the client doesn't even send the request if there's
+                    // another user logged in. However...
+                    String s = "A different user is logged from your address";
+                };
+                loggedUsers.computeIfAbsent(requestorAddress, (k) -> {
+                    if (loggedUsers.containsValue(param[1])) {
+                        wrapper.s = "The same user is already logged in from another address";
+                        return null;
+                    } else {
+                        wrapper.s = "-Successfully logged in: " + config.multicastAddress + " " + config.multicastPort;
+                        return param[1];
+                    }
+                });
+                toRet = wrapper.s;
+
+            } else
+                toRet = "Login error. Either username or password are wrong";
+        } else {
+            String u = loggedUsers.get(requestorAddress);
+            try {
+                if (u == null) {
+                    toRet = "Sign-in before sending requests";
+                }
+                // list users
+                else if (Pattern.matches("^list\\s+users\\s*$", s)) {
+                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listUsers(u));
+                }
+                // list followers... never used
+                else if (Pattern.matches("^list\\s+followers\\s*$", s)) {
+                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowers(u));
+                }
+                // list following
+                else if (Pattern.matches("^list\\s+following\\s*$", s)) {
+                    toRet = ServerInternal.userWrapSet2String(ServerInternal.listFollowing(u));
+                }
+                // follow user
+                else if (Pattern.matches("^follow\\s+\\S+\\s*$", s)) {
+                    String param[] = s.split("\\s+");
+                    int res = ServerInternal.followUser(param[1], u);
+                    if (res == 0) {
+                        toRet = "Now following \"" + param[1] + "\"";
+                        serverRMI.update(param[1], true);
+                    } else if (res == 1)
+                        toRet = "Already following \"" + param[1] + "\"";
+                    else
+                        toRet = "Can't follow yourself";
+                }
+                // unfollow user
+                else if (Pattern.matches("^unfollow\\s+\\S+\\s*$", s)) {
+                    String param[] = s.split("\\s+");
+                    if (ServerInternal.unfollowUser(param[1], u) == 0) {
+                        toRet = "Now unfollowing \"" + param[1] + "\"";
+                        serverRMI.update(param[1], true);
+                    } else
+                        toRet = "Already not following \"" + param[1] + "\"";
+                }
+                // view blog
+                else if (Pattern.matches("^blog\\s*$", s)) {
+                    toRet = ServerInternal.postWrapSet2String(ServerInternal.viewBlog(u));
+                }
+                // create post
+                else if (Pattern.matches("^post\\s+\".+\"\\s+\".+\"\\s*$", s)) {
+                    String param[] = s.split("\"");
+                    ServerInternal.PostWrap p = ServerInternal.createPost(param[1], param[3], u);
+                    toRet = "New post created: " + p.idPost /* + " " + param[1] + " " + param[3] */;
+                }
+                // show feed
+                else if (Pattern.matches("^show\\s+feed\\s*$", s)) {
+                    toRet = ServerInternal.postWrapSet2String(ServerInternal.showFeed(u));
+                }
+                // show post
+                else if (Pattern.matches("^show\\s+post\\s+\\d+\\s*$", s)) {
+                    String param[] = s.split("\\s+");
+                    toRet = ServerInternal.postWrap2String(ServerInternal.showPost(Integer.parseInt(param[2]), u));
+                }
+                // delete post
+                else if (Pattern.matches("^delete\\s+post\\s+[+-]?\\d+\\s*$", s)) {
+                    String param[] = s.split("\\s+");
+                    int res = ServerInternal.deletePost(Integer.parseInt(param[2]), u);
+                    if (res == -1)
+                        toRet = "Cannot delete a post which isn't owned by you";
+                    else
+                        toRet = "Post " + res + " deleted";
+                }
+                // rewin post
+                else if (Pattern.matches("^rewin\\s+post\\s+\\d+\\s*$", s)) {
+                    String param[] = s.split("\\s+");
+                    if (ServerInternal.rewinPost(Integer.parseInt(param[2]), u) == 1)
+                        toRet = "Cannot rewin a post made by yourself";
+                    else
+                        toRet = "Post " + param[2] + " rewined";
+                }
+                // rate post
+                else if (Pattern.matches("^rate\\s+post\\s+\\d+\\s[+-]?\\d+\\s*$", s)) {
+                    String param[] = s.split("\\s+");
+                    int vote = Integer.parseInt(param[2]);
+                    int res = ServerInternal.ratePost(vote, Integer.parseInt(param[3]), u);
+                    if (res == 1)
+                        toRet = "Cannot rate a post which isn't in your feed";
+                    else if (res == 2)
+                        toRet = "Already voted";
+                    else
+                        toRet = "Post " + param[2] + (vote >= 0 ? " upvoted" : " downvoted");
+                }
+                // add comment
+                else if (Pattern.matches("^comment\\s+\\d+\\s+\".+\"\\s*$", s)) {
+                    String id = s.split("\\s+")[1];
+                    String comment = s.substring(s.indexOf("\"") + 1, s.lastIndexOf("\""));
+                    if (ServerInternal.addComment(Integer.parseInt(id), comment, u) == 1)
+                        toRet = "Cannot rate a post which isn't in your feed";
+                    else
+                        toRet = "Comment added to post " + id;
+                }
+                // get wallet
+                else if (Pattern.matches("^wallet\\s*$", s)) {
+                    toRet = ServerInternal.getWallet(u);
+                }
+                // get wallet bitcoin
+                else if (Pattern.matches("^wallet\\s+btc\\s*$", s)) {
+                    toRet = "" + ServerInternal.getWalletInBitcoin(u);
+                } else if (Pattern.matches("^logout\\s*$", s) || Pattern.matches("^exit\\s*$", s)) {
+                    toRet = "No response will be sent";
+                } else {
+                    return toRet = "Unknown command: " + s;
+                }
+            } catch (NotExistingUser e) {
+                toRet = "User not found";
+            } catch (NotExistingPost e) {
+                toRet = "Post not found";
+            } catch (RemoteException e) {
+                e.printStackTrace();
+                System.out.println("|ERROR updating followers list");
+            }
+        }
+
+        return toRet;
+    }
+
+
+    /**
+     * Utility to read configuration file.
+     * Prints the fields read from the .json file, if found
+     * @param configFilePath
+     * @return ServerConfig instance which might contain some default fields
+     */
     public ServerConfig readConfigFile(String configFilePath) {
         ServerConfig servConfig = new ServerConfig();
         ObjectMapper mapper = new ObjectMapper();
@@ -608,7 +617,7 @@ class Server {
                 e.printStackTrace();
             }
 
-            System.out.println("Configuration file read.\nConfiguring the server as follows:");
+            System.out.println("Configuration file " + configFilePath + " read.\nConfiguring the server as follows:");
             for (Field f : servConfig.getClass().getDeclaredFields()) {
 
                 try {
@@ -622,6 +631,8 @@ class Server {
             System.out.println("Config file not found. Using default values.");
         return servConfig;
     }
+
+    
 
     private static void p(String s) {
         synchronized (stdOutlock) {

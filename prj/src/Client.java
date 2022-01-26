@@ -42,8 +42,6 @@ public class Client {
 
     private ClientConfig config;
     private MulticastSocket ms = null; // last active multicast socket
-    // private ConcurrentHashMap<MulticastSocket,Integer> map = new
-    // ConcurrentHashMap<MulticastSocket,Integer>();
     private Set<MulticastSocket> socketsToBeClosed = ConcurrentHashMap.newKeySet();
 
     /**
@@ -128,7 +126,7 @@ public class Client {
                 }
 
                 // "Rewards calculated" print enable/disable
-                if (Pattern.matches("^notif\\s+print\\s*$", msg)) {
+                if (Pattern.matches("^notify\\s*$", msg)) {
                     notifyPrintEnable = !notifyPrintEnable;
                     print(
                             "Notifications are now " + (notifyPrintEnable ? "enabled" : "disabled"));
@@ -240,10 +238,6 @@ public class Client {
                 }
             }
 
-            // Set<Thread> threadSet = Thread.getAllStackTraces().keySet();
-            // threadSet.forEach((t) -> {print(t.getId() + " | " + t.getName()
-            // + " | " + t.toString()) ;});
-            // Some RMI threads seem to be keeping the JVM on, we have to shutdown manually
             return;
         } catch (ConnectException | java.rmi.ConnectException | ConnectIOException | UnmarshalException e) {
             print("Could not connect to server");
@@ -265,6 +259,7 @@ public class Client {
                 // we must keep a reference
                 InetSocketAddress group = new InetSocketAddress(InetAddress.getByName(addr), port);
                 NetworkInterface netInt = NetworkInterface.getByName("wlan1");
+                
                 myMCskt.joinGroup(group, netInt);
 
                 byte[] buffer = new byte[8192];
@@ -273,8 +268,7 @@ public class Client {
                     myMCskt.receive(dp); // blocking
 
                     // the only way to wake the Thread from myMCskt.receive would be to call
-                    // myMCskt.close()
-                    // on logout
+                    // myMCskt.close() on logout
                     // but that wouldn't allow us to call leaveGroup()
                     // in this way the thread will terminate on the next received datagram
 
@@ -293,7 +287,6 @@ public class Client {
             } catch (SocketException e) {
                 if (!this.exit)
                     print("|ERROR: snifferThread MulticastSocket closed");
-                // e.printStackTrace();
                 return;
             } catch (IOException e) {
                 print("|ERROR: snifferThread");

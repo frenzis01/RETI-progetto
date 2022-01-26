@@ -13,9 +13,9 @@ public class ServerMain {
     public static void main(String args[]) {
         try {
 
-            createStubs();
+            // createStubs();
             // TCP server setup
-            Server server = new Server("../serverConfig.json");
+            Server server = new Server(args.length > 0 ? args[0] : "../config/serverConfig.json");
             server.start();
 
         } catch (RemoteException e) {
@@ -25,6 +25,7 @@ public class ServerMain {
         }
     }
 
+    // Method used for testing purposes
     private static void createStubs() throws NotExistingPost, NotExistingUser, ExistingUser {
         // Add some users
         ServerInternal.addUser("u1", "1", "tag1 tag2");
@@ -41,18 +42,16 @@ public class ServerMain {
         ServerInternal.followUser("u1", "u5");
 
         // Add posts
-        ServerInternal.createPost("p1", "Lorem ipsum", "u1");
-        ServerInternal.PostWrap p = ServerInternal.createPost("p2", "dolor sit amet", "u1");
+        ServerInternal.PostWrap p0 =ServerInternal.createPost("p1", "Lorem ipsum", "u1");
+        ServerInternal.PostWrap p1 = ServerInternal.createPost("p2", "dolor sit amet", "u1");
 
         // Posts interaction
-        ServerInternal.addComment(p.idPost, "consectetur adipisci", "u2");
-        ServerInternal.addComment(p.idPost, "consectetur adipiscy", "u2");
-        ServerInternal.addComment(p.idPost, "consectetur adipisce", "u4");
-        ServerInternal.rewinPost(p.idPost, "u3");
+        ServerInternal.addComment(p1.idPost, "consectetur adipisci elit", "u2");
+        ServerInternal.addComment(p1.idPost, "sed eiusmod tempor", "u2");
+        ServerInternal.addComment(p0.idPost, "incidunt ut labore", "u4");
+        ServerInternal.rewinPost(p1.idPost, "u3");
 
         ServerInternal.rewardAlgorithm();
-        // ServerInternal.rewardAlgorithm(); // this won't do anything, the modified post list has been confused
-        // ServerInternal.printWallets();
 
         ServerInternal.write2json();
 
