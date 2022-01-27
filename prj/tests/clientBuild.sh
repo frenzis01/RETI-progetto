@@ -1,5 +1,6 @@
 #!/bin/bash
-cd "$(dirname "$0")"
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+cd "$SCRIPT_DIR"
 echo "Adding some parameters to clientConfig.json"
 
 echo "{
@@ -16,4 +17,4 @@ javac -cp "../lib/*:../src:../out" -d "../out/" ../src/Client*.java ../src/ROC*.
 echo "Building Client.jar ..."
 cd ../out
 jar vcmf ../config/client.mf ../jar/Client.jar Client*.class ROSint.class ROCint.class ROCimp.class VolatileWrapper.class exceptions/*.class
-cd "$(dirname "$0")"
+cd "$SCRIPT_DIR"

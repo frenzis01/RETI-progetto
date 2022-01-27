@@ -1,6 +1,4 @@
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 
 public @Data class ServerConfig {
     int tcpPort = 12345;

@@ -3,6 +3,6 @@
 "multicastPort" : "6789",
 "registryPort" : "1900",
 "authorPercentage" : "0.6",
-"backupDir" : "../bkp/",
+"backupDir" : "/home/francis/Documenti/Local_UniPi/reti/Progetto/prj/tests/../bkp",
 "exclusiveLogin" : true
 }

@@ -1,6 +1,5 @@
 import java.rmi.RemoteException;
 import java.rmi.server.RemoteServer;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,7 +38,6 @@ public class ROSimp extends RemoteServer implements ROSint {
         this.update(clientName, false);
     }
 
-    /* annulla registrazione per il callback */
     public synchronized void unregisterForCallback(ROCint Client) throws RemoteException {
         if (this.connectedClients.remove(Client) != null)
             System.out.println("Client unregistered");
@@ -48,17 +46,16 @@ public class ROSimp extends RemoteServer implements ROSint {
     }
 
     /*
-     * notifica di una modifica (follower in più o in meno) ai follower di
-     * 'followed'
+     * 'followed' 's followers set has changed, one follower more or one less
      */
     public synchronized void update(String followed, boolean notFirstUpdate) throws RemoteException {
-        // System.out.println("Callback to -> " + followed);
+        // if a user can be logged from only one process, this set will contain only one element
         Set<ROCint> toNotify = this.connectedClients.entrySet()
         .stream()
         .filter( e -> {return e.getValue().equals(followed);} )
         .map(e -> e.getKey())
         .collect(Collectors.toSet());
-        boolean shouldThrow = false;
+        boolean shouldThrow = false; // used later on
         for (ROCint client : toNotify) {
             try {
             client.newFollowers(ServerInternal.getFollowers(followed)
@@ -72,6 +69,5 @@ public class ROSimp extends RemoteServer implements ROSint {
         }
         if (shouldThrow)
             throw new RemoteException();
-        // System.out.println("Callback to -> " + followed + " completed");
     }
 }

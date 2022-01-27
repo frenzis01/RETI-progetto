@@ -839,7 +839,11 @@ public class ServerInternal {
             mapper.writeValue(tagsUsersBackup, tagsUsers);
             int[] counters = new int[] { idPostCounter, rewardPerformedIterations };
             mapper.writeValue(countersBackup, counters);
-        } catch (IOException e) {
+        }
+        catch (FileNotFoundException e){
+            System.out.println("Could not locate backup file");
+        } 
+        catch (IOException e) {
             e.printStackTrace();
         }
     }

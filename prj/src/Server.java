@@ -12,7 +12,6 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
-import java.nio.channels.ClosedChannelException;
 import java.nio.channels.Pipe;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -21,10 +20,7 @@ import java.nio.channels.SocketChannel;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -138,26 +134,26 @@ class Server {
     private Runnable requestHandler(String req, SocketChannel c_channel, String c_channelToString) {
         return () -> {
 
-            String res = parseRequest(req, c_channelToString);
+            String res = parseRequest(req, c_channelToString); // eval request
             p("------- Evaluated req by" + c_channelToString + " by Thread: "
                     + Thread.currentThread().getName() + "\n | => " + req +
                     "\n | Result => \n" + res + "\n-----------------------");
 
+            // prepare the response
             ByteBuffer length = ByteBuffer.allocate(Integer.BYTES);
             length.putInt(res.length());
             length.flip();
-
             ByteBuffer message = ByteBuffer.wrap(res.getBytes());
 
+            // toSend will be used as attachment
             ByteBuffer toSend = ByteBuffer
                     .allocate(length.remaining() + message.remaining())
                     .put(length)
                     .put(message);
-            toSend.flip();
-
-            // ByteBuffer[] atc = { length, message };
+            toSend.flip();  // doing this will make it ready to be read
 
             // c_channel.register() will be performed by selectorThread
+            // add parameters to shared queue and insert token in the Pipe to wake selector
             toRegister.add(new RegisterParams(c_channel, toSend));
             var token = ByteBuffer.allocateDirect(1);
             try {
@@ -223,7 +219,6 @@ class Server {
                 }
                 // if clause to avoid writing 2 times the same stuff
                 if (!Thread.currentThread().isInterrupted()) {
-                    // p("...Backing up...");
                     ServerInternal.write2json();
                 }
             }
@@ -398,35 +393,32 @@ class Server {
         if (key.attachment() == null){  // this is the first read
             ByteBuffer lenBuf = ByteBuffer.allocate(Integer.BYTES);
             var nread = c_channel.read(lenBuf); 
-            // System.out.println("LENGTH READ " + lenBuf.position() + " " + lenBuf.limit() + " " + lenBuf.remaining() + " " + nread);
             assert (nread == Integer.BYTES);   // assume to read the entire message length
             lenBuf.flip();
             int msgLen = lenBuf.getInt();
-            // System.out.println("LENGTH READ " + lenBuf.position() + " " + lenBuf.limit() + " " + lenBuf.remaining() + " " + nread+ " " + msgLen );
             
-            
+            // create a buffer of the desired length
             msgBuf = ByteBuffer.allocate(msgLen);
             key.attach(msgBuf);
         }
 
+        // get key's attachment and write to it
         msgBuf = (ByteBuffer) key.attachment();
         c_channel.read(msgBuf);
-        // System.out.println("READING " + c_channel.read(msgBuf));
 
         if (!msgBuf.hasRemaining()) {
-            // System.out.println("END OF READ");
 
-            key.interestOps(0);
-            msgBuf.flip();
-            String req = new String(msgBuf.array()).trim();
+            key.interestOps(0); // no more interest in reading nor writing (reply not ready yet)
+            msgBuf.flip();  // we wrote to -> msgBuf, now we need to read
+            String req = new String(msgBuf.array()).trim(); // get request
             msgBuf.clear();
-
             key.attach(null);
+
     
             p("-------" + c_channel.getRemoteAddress().toString() + "\n | Received => " + req);
             if (Pattern.matches("^logout\\s*$", req)) { // client logged out
-                // p("client " + c_channel.getRemoteAddress());
-                loggedUsers.remove(c_channel.getRemoteAddress().toString());
+                loggedUsers.remove(c_channel.getRemoteAddress().toString());    // remove entry
+                // we won't send any reply, so we have to register the interest for reading now
                 c_channel.register(sel, SelectionKey.OP_READ, null);
             } else {
                 this.workerPool.execute(this.requestHandler(req, c_channel, c_channel.getRemoteAddress().toString()));
@@ -444,23 +436,13 @@ class Server {
     private void sendResult(Selector sel, SelectionKey key) throws IOException {
         SocketChannel c_channel = (SocketChannel) key.channel();
 
-        /**
-         * key.attachment() contains the length of the message to be written and the
-         * message itself. We'll prepend the length.
-         */
-        // ByteBuffer[] answer = (ByteBuffer[]) key.attachment();
         ByteBuffer toSend = (ByteBuffer) key.attachment();
 
         c_channel.write(toSend);
-        // System.out.println("WRITING " + c_channel.write(toSend) + " " + toSend.position() + " " + toSend.limit() + " " + toSend.remaining());
 
-        // toSend.clear();
-        // answer[0].flip();
-        if (!toSend.hasRemaining()) {
-            // System.out.println("END OF WRITE");
+        if (!toSend.hasRemaining()) {   // wrote everything, now ready to read another request
             toSend.clear();
             c_channel.register(sel, SelectionKey.OP_READ, null);
-            // sel.wakeup();
         }
 
     }

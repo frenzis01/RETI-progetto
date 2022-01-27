@@ -12,9 +12,9 @@
   "u1" : {
     "username" : "u1",
     "password" : "1",
-    "blog" : [ 280, 281, 284, 237, 269, 254, 239, 271 ],
+    "blog" : [ 237, 269, 239, 271, 304, 305, 306, 307, 310, 284, 254, 286, 287 ],
     "followers" : [ "u5", "u2", "u4" ],
-    "following" : [ "u2", "u3" ],
+    "following" : [ "u2" ],
     "wallet" : 0.8693162079699814,
     "walletHistory" : [ {
       "ts" : "2022-03-26 01:03:13",
@@ -27,7 +27,7 @@
     "password" : "2",
     "blog" : [ 285 ],
     "followers" : [ "u1", "u3" ],
-    "following" : [ "u1" ],
+    "following" : [ "u1", "u3" ],
     "wallet" : 0.18628204456499606,
     "walletHistory" : [ {
       "ts" : "2022-03-26 01:03:13",
@@ -38,8 +38,8 @@
   "u3" : {
     "username" : "u3",
     "password" : "3",
-    "blog" : [ 251, 267, 283, 252, 253, 270, 255 ],
-    "followers" : [ "u1" ],
+    "blog" : [ 296, 297, 298, 301, 270, 302, 303, 308, 309, 311, 312, 283, 252, 253, 255 ],
+    "followers" : [ "u2", "u4" ],
     "following" : [ "u2" ],
     "wallet" : 0.0,
     "walletHistory" : [ ],
@@ -50,7 +50,7 @@
     "password" : "4",
     "blog" : [ ],
     "followers" : [ ],
-    "following" : [ "u1" ],
+    "following" : [ "u1", "u3" ],
     "wallet" : 0.18628204456499606,
     "walletHistory" : [ {
       "ts" : "2022-03-26 01:03:13",

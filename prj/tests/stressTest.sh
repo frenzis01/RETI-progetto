@@ -1,17 +1,23 @@
 #!/bin/bash
-#TEST3 (aka stress test)
+# Stress test
+
+# output formatting variables
 BWHT="\033[1;37m"
 REG=$(tput sgr0)
 TIMER=40
 export BWHT
 
-cd "$(dirname "$0")"
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+BKPDIR="$SCRIPT_DIR/../bkp"
+
+cd "$SCRIPT_DIR"
 
 # SERVER SETUP
 # build server
 ./serverBuild.sh
 # allow the same user to be logged by more than one process
 echo "{
+    \"backupDir\" : \"$BKPDIR\",
     \"exclusiveLogin\" : \"false\"
 }" > ../config/serverConfig.json
 # run server in background
