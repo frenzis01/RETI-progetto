@@ -163,7 +163,6 @@ class Server {
         };
     }
 
-    
     // THREADS implementation
     private Runnable rewardDaemon() {
         return () -> {
@@ -399,7 +398,6 @@ class Server {
 
     }
 
-
     /**
      * Writes the content of key.attachment to the associated channel
      *
@@ -417,15 +415,17 @@ class Server {
         ByteBuffer toSend = ByteBuffer.allocate(answer[0].remaining() + answer[1].remaining()).put(answer[0])
                 .put(answer[1]);
         toSend.flip();
-        c_channel.write(toSend);
+        while (toSend.hasRemaining())   // Seems to working fine even without while loop...
+            c_channel.write(toSend);
         toSend.clear();
 
-        answer[0].flip();
-        if (toSend.hasRemaining()) {
-            toSend.clear();
-            c_channel.register(sel, SelectionKey.OP_READ);
-            sel.wakeup();
-        }
+        // answer[0].flip();
+        // if (toSend.hasRemaining()) {
+        // System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        // toSend.clear();
+        c_channel.register(sel, SelectionKey.OP_READ);
+        sel.wakeup();
+        // }
 
     }
 
@@ -597,10 +597,10 @@ class Server {
         return toRet;
     }
 
-
     /**
      * Utility to read configuration file.
      * Prints the fields read from the .json file, if found
+     * 
      * @param configFilePath
      * @return ServerConfig instance which might contain some default fields
      */
@@ -631,8 +631,6 @@ class Server {
             System.out.println("Config file not found. Using default values.");
         return servConfig;
     }
-
-    
 
     private static void p(String s) {
         synchronized (stdOutlock) {

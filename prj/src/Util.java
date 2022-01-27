@@ -22,7 +22,9 @@ public class Util {
         int msgLen = msg[0].getInt();
         printd("msg : " + msgLen);
         msg[1] = ByteBuffer.allocate(msgLen);
-        printd("Read : " + s.read(msg[1]));
+        // printd("Read : " + s.read(msg[1]));
+        while(msg[1].hasRemaining())    // Seems to working fine even without while loop...
+            s.read(msg[1]);
 
         msg[1].flip();
         String reply = new String(msg[1].array()).trim();
