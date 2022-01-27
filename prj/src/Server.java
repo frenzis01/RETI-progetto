@@ -149,10 +149,16 @@ class Server {
 
             ByteBuffer message = ByteBuffer.wrap(res.getBytes());
 
-            ByteBuffer[] atc = { length, message };
+            ByteBuffer toSend = ByteBuffer
+                    .allocate(length.remaining() + message.remaining())
+                    .put(length)
+                    .put(message);
+            toSend.flip();
+
+            // ByteBuffer[] atc = { length, message };
 
             // c_channel.register() will be performed by selectorThread
-            toRegister.add(new RegisterParams(c_channel, atc));
+            toRegister.add(new RegisterParams(c_channel, toSend));
             var token = ByteBuffer.allocateDirect(1);
             try {
                 this.pipe.sink().write(token);
@@ -336,7 +342,7 @@ class Server {
                                                 " | active clients: " + ++this.activeConnections);
 
                                 // Server is going to read from this channel
-                                c_channel.register(sel, SelectionKey.OP_READ);
+                                c_channel.register(sel, SelectionKey.OP_READ, null);
 
                             } else if (key.isReadable()) { // READABLE
                                 this.getClientRequest(sel, key); // get request
@@ -346,6 +352,7 @@ class Server {
                                 this.sendResult(sel, key);
                             }
                         } catch (IOException | BufferUnderflowException e) { // if the client prematurely disconnects
+                            // e.printStackTrace();
                             p(
                                     "CLIENT DISCONNECTED: " + ((SocketChannel) key.channel()).getRemoteAddress());
                             clientExitHandler(key);
@@ -368,11 +375,11 @@ class Server {
      */
     private class RegisterParams {
         SocketChannel c;
-        ByteBuffer[] atc;
+        ByteBuffer atc;
 
-        public RegisterParams(SocketChannel c, ByteBuffer[] atc) {
+        public RegisterParams(SocketChannel c, ByteBuffer atc) {
             this.c = c;
-            this.atc = atc.clone();
+            this.atc = atc;
         }
     }
 
@@ -387,13 +394,43 @@ class Server {
         // Create new SocketChannel with the Client
         SocketChannel c_channel = (SocketChannel) key.channel();
 
-        String req = Util.readMsgFromSocket(c_channel);
-        p("-------" + c_channel.getRemoteAddress().toString() + "\n | Received => " + req);
-        if (Pattern.matches("^logout\\s*$", req)) { // client logged out
-            p("client " + c_channel.getRemoteAddress());
-            loggedUsers.remove(c_channel.getRemoteAddress().toString());
-        } else {
-            this.workerPool.execute(this.requestHandler(req, c_channel, c_channel.getRemoteAddress().toString()));
+        ByteBuffer msgBuf;
+        if (key.attachment() == null){  // this is the first read
+            ByteBuffer lenBuf = ByteBuffer.allocate(Integer.BYTES);
+            var nread = c_channel.read(lenBuf); 
+            // System.out.println("LENGTH READ " + lenBuf.position() + " " + lenBuf.limit() + " " + lenBuf.remaining() + " " + nread);
+            assert (nread == Integer.BYTES);   // assume to read the entire message length
+            lenBuf.flip();
+            int msgLen = lenBuf.getInt();
+            // System.out.println("LENGTH READ " + lenBuf.position() + " " + lenBuf.limit() + " " + lenBuf.remaining() + " " + nread+ " " + msgLen );
+            
+            
+            msgBuf = ByteBuffer.allocate(msgLen);
+            key.attach(msgBuf);
+        }
+
+        msgBuf = (ByteBuffer) key.attachment();
+        c_channel.read(msgBuf);
+        // System.out.println("READING " + c_channel.read(msgBuf));
+
+        if (!msgBuf.hasRemaining()) {
+            // System.out.println("END OF READ");
+
+            key.interestOps(0);
+            msgBuf.flip();
+            String req = new String(msgBuf.array()).trim();
+            msgBuf.clear();
+
+            key.attach(null);
+    
+            p("-------" + c_channel.getRemoteAddress().toString() + "\n | Received => " + req);
+            if (Pattern.matches("^logout\\s*$", req)) { // client logged out
+                // p("client " + c_channel.getRemoteAddress());
+                loggedUsers.remove(c_channel.getRemoteAddress().toString());
+                c_channel.register(sel, SelectionKey.OP_READ, null);
+            } else {
+                this.workerPool.execute(this.requestHandler(req, c_channel, c_channel.getRemoteAddress().toString()));
+            }
         }
 
     }
@@ -411,21 +448,20 @@ class Server {
          * key.attachment() contains the length of the message to be written and the
          * message itself. We'll prepend the length.
          */
-        ByteBuffer[] answer = (ByteBuffer[]) key.attachment();
-        ByteBuffer toSend = ByteBuffer.allocate(answer[0].remaining() + answer[1].remaining()).put(answer[0])
-                .put(answer[1]);
-        toSend.flip();
-        while (toSend.hasRemaining())   // Seems to working fine even without while loop...
-            c_channel.write(toSend);
-        toSend.clear();
+        // ByteBuffer[] answer = (ByteBuffer[]) key.attachment();
+        ByteBuffer toSend = (ByteBuffer) key.attachment();
 
-        // answer[0].flip();
-        // if (toSend.hasRemaining()) {
-        // System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        c_channel.write(toSend);
+        // System.out.println("WRITING " + c_channel.write(toSend) + " " + toSend.position() + " " + toSend.limit() + " " + toSend.remaining());
+
         // toSend.clear();
-        c_channel.register(sel, SelectionKey.OP_READ);
-        sel.wakeup();
-        // }
+        // answer[0].flip();
+        if (!toSend.hasRemaining()) {
+            // System.out.println("END OF WRITE");
+            toSend.clear();
+            c_channel.register(sel, SelectionKey.OP_READ, null);
+            // sel.wakeup();
+        }
 
     }
 
@@ -440,9 +476,9 @@ class Server {
             if (cAddr != null) // this seems always to be true
                 loggedUsers.remove(cAddr.toString());
             key.channel().close();
-            key.cancel();
-            this.activeConnections--;
         }
+        key.cancel();
+        this.activeConnections--;
     }
 
     /**

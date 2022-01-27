@@ -99,6 +99,8 @@ public class Client {
         try (SocketChannel client = SocketChannel
                 .open(new InetSocketAddress(this.config.serverAddress, this.config.serverPort));) {
 
+            client.configureBlocking(true);
+
             String[] commands = cliCommands.split("\\+\\s*");
             int iCliCommands = -1;
 
@@ -150,8 +152,6 @@ public class Client {
                     continue;
                 }
 
-                // We exit after sending the exit message
-                // It's important to notify the server about the logout
                 if (Pattern.matches("^exit\\s*$", msg)) {
                     this.exit = true;
                     client.close();
@@ -192,7 +192,7 @@ public class Client {
 
                 // Server's Response
                 try {
-                    response = Util.readMsgFromSocket(client);
+                    response = readResult(client);
                     print(response);
 
                 } catch (Exception e) {
@@ -300,6 +300,30 @@ public class Client {
     private static void print(String s) {
         if (printEnable)
             System.out.println(s);
+    }
+
+    /**
+     * Reads from socket the length (Int) of a message and then the message itself
+     * 
+     * @param s socket channel from which we are reading
+     * @return the read message
+     * @throws IOException
+     */
+    private static String readResult(SocketChannel s) throws IOException {
+
+        ByteBuffer lenBuf, msgBuf;
+        lenBuf = ByteBuffer.allocate(Integer.BYTES);
+        s.read(lenBuf);
+
+        lenBuf.flip();
+        int msgLen = lenBuf.getInt();
+        msgBuf = ByteBuffer.allocate(msgLen);
+        s.read(msgBuf);
+
+        msgBuf.flip();
+        String reply = new String(msgBuf.array()).trim();
+
+        return reply;
     }
 
     private static String usage() {
