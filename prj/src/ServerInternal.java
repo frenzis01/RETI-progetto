@@ -53,7 +53,7 @@ public class ServerInternal {
         super();
     }
 
-    // Methods used in RMI interface implementation
+    // METHODS USED IN RMI INTERFACE
 
     public static Boolean usernameUnavailable(String username) {
         return users.containsKey(username);
@@ -69,7 +69,6 @@ public class ServerInternal {
      */
     public static void addUser(String username, String password, String tags) throws ExistingUser {
         users.put(username, new User(username, password, tags));
-        // ServerInternal.followers.put(username, new HashSet<String>());
     }
 
     /**
@@ -86,7 +85,7 @@ public class ServerInternal {
                 .collect(Collectors.toCollection(HashSet::new));
     }
 
-    // Methods needed by User constructor
+    // METHODS NEEDED BY USER CONSTRUCTOR
 
     /**
      * Add user to a tag set
@@ -107,7 +106,7 @@ public class ServerInternal {
         ServerInternal.authorPercentage = authorPercentage;
     }
 
-    // Functions used to interact with the internal state of winsome
+    // FUNCTIONS USED TO INTERACT WITH THE INTERNAL STATE OF WINSOME
 
     /**
      * @param username
@@ -520,7 +519,7 @@ public class ServerInternal {
 
 
     
-    // Private utilities
+    // PRIVATE UTILITIES
 
     /**
      * Check's whether the given username is associated with a winsome user
@@ -574,7 +573,7 @@ public class ServerInternal {
      */
     public class UserWrap implements Comparable<UserWrap> {
         final String username;
-        final String[] tags /* , following, followers */;
+        final String[] tags;
         final HashSet<String> followers, following;
 
         private UserWrap(User u) {
@@ -835,7 +834,6 @@ public class ServerInternal {
         try {
             mapper.writeValue(usersBackup, users);
             mapper.writeValue(postsBackup, posts);
-            // mapper.writeValue(followersBackup, followers);
             mapper.writeValue(tagsUsersBackup, tagsUsers);
             int[] counters = new int[] { idPostCounter, rewardPerformedIterations };
             mapper.writeValue(countersBackup, counters);
@@ -852,7 +850,7 @@ public class ServerInternal {
      * Checks for each .json backup file if already exists, if not it creates it
      */
     private static void createBackupFiles() {
-        File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, /* followersBackup, */ countersBackup };
+        File[] bkpFiles = { usersBackup, postsBackup, tagsUsersBackup, countersBackup };
         Arrays.asList(bkpFiles).forEach((bkp) -> {
             try {
                 if (!bkp.exists())
@@ -871,7 +869,6 @@ public class ServerInternal {
     public static void updateBackupDir(String backupDir) {
         usersBackup = new File(backupDir + "/users.json");
         postsBackup = new File(backupDir + "/posts.json");
-        // followersBackup = new File(backupDir + "/followers.json");
         tagsUsersBackup = new File(backupDir + "/tagsUsers.json");
         countersBackup = new File(backupDir + "/counters.json");
     }

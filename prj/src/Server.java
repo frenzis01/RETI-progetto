@@ -49,19 +49,12 @@ class Server {
     private Pipe pipe = null;
     private ConcurrentLinkedQueue<RegisterParams> toRegister = new ConcurrentLinkedQueue<RegisterParams>();
 
-    /**
-     *
-     * @param port
-     */
     public Server(String configFilePath) {
         this.config = readConfigFile(configFilePath);
         ServerInternal.updateBackupDir(this.config.backupDir);
         ServerInternal.setAuthorPercentage(this.config.authorPercentage);
     }
 
-    /**
-     * avvia l'esecuzione del server
-     */
     public void start() throws RemoteException {
 
         try {
@@ -118,7 +111,7 @@ class Server {
     }
 
     /**
-     * Task assigned to worker threads.
+     * @return Task assigned to worker threads.
      * 
      * @param req               request to be parsed and eventually evaluated
      * @param c_channel         assigned to the requesting client's channel. This
@@ -129,7 +122,6 @@ class Server {
      *                          ClosedChannelException and running clientExitHandler
      *                          from multiple threads. This param is needed only for
      *                          printing to stdout purposes
-     * @return
      */
     private Runnable requestHandler(String req, SocketChannel c_channel, String c_channelToString) {
         return () -> {
@@ -166,6 +158,12 @@ class Server {
     }
 
     // THREADS implementation
+
+    /**
+     * 
+     * Periodically calculates rewards
+     * @return
+     */
     private Runnable rewardDaemon() {
         return () -> {
             try (DatagramSocket skt = new DatagramSocket(this.config.multicastPort + 1)) {

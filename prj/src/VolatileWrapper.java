@@ -1,4 +1,4 @@
-// used to pass boolean notification print flag to ROCimp
+// used in Client to pass boolean notification print flag to ROCimp
 public class VolatileWrapper <T> {
         public volatile T v;
 

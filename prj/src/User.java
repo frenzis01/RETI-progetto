@@ -40,8 +40,6 @@ public @Data class User implements Comparable<User>, Serializable {
         this.password = new String(password);
         tags.toLowerCase();
         this.tags = tags.split("\\s+");
-        // I don't care to check that there aren't more than 5 tags here
-        // It's not this constructor's responsibility to check it
         for (String tag : this.tags) 
             ServerInternal.add2tag(username, tag);
         
@@ -50,8 +48,6 @@ public @Data class User implements Comparable<User>, Serializable {
         this.following = new HashSet<String>();
         this.blog = new HashSet<Integer>();
 
-        // ServerInternal.followers.put(new String(this.username), new HashSet<String>());
-        // this is done by ServerInternal
     }
 
     public int compareTo(User u) {

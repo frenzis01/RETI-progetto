@@ -1,11 +1,12 @@
 import java.rmi.server.RemoteObject;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class ROCimp extends RemoteObject implements ROCint {
     String username;
-    HashSet<String> followers = new HashSet<String>();
+    Set<String> followers = ConcurrentHashMap.newKeySet();
     VolatileWrapper<Boolean> printEnable;
 
     public ROCimp(String username, VolatileWrapper<Boolean> printEnable) {

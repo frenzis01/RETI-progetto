@@ -151,13 +151,15 @@ public class Client {
                     continue;
                 }
 
+                // exit
                 if (Pattern.matches("^exit\\s*$", msg)) {
                     this.exit = true;
                     client.close();
                     continue;
                 }
 
-                if (Pattern.matches("^list\\s+followers\\s*$", msg)) {
+                // list followers
+                if (Pattern.matches("^list\\s+followers\\s*$", msg) && logged ) {
                     stubImp.followers.forEach((u) -> print(" " + u));
                     continue;
                 }
@@ -178,13 +180,12 @@ public class Client {
                 if (Pattern.matches("^logout\\s*$", msg)) {
                     if (logged) {
                         sniffer.interrupt();
-                        // sniffer = null;
                         server.unregisterForCallback(stub);
                         print("Logged out");
                         logged = false;
                     } else
                         print("No user logged");
-                    continue;
+                    continue; // we won't read any answer
                 }
 
                 String response = "";
